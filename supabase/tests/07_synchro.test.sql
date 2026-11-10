@@ -60,7 +60,7 @@ begin
   r2 := sync_appliquer((select p from payload), 'mcp');
   select count(*) into n2 from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1';
   assert n1 = n2 and n1 = 1, 'meme nombre d echeances: ' || n1 || ' / ' || n2;
-  assert (r1->>'journal_id') is not null and (r2->>'dossiers')::int = 1 and (r2->>'echeances')::int = 1, 'retour ' || r2;
+  assert (r1->>'journal_id') is not null and (r2->>'dossiers')::int = 1 and (r2->>'echeances')::int = 1, 'retour ' || r2::text;
   select * into e from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1' and type = 'tva_mensuelle';
   assert e.statut = 'depose' and e.source_statut = 'pennylane' and e.statut_pennylane = 'accepted', 'depose';
   assert e.montant = -1512 and e.date_depot = date '2026-10-19' and e.date_limite = date '2026-10-19'
@@ -179,7 +179,7 @@ begin
   assert d.csp_id is null and d.senior_id is null and d.statut = 'actif' and d.regime_tva = 'annuel', 'nouveau dossier';
   assert exists (select 1 from anomalies where type = 'collaborateur_inconnu' and cle = 'Inconnu TOTAL' and dossier_id = d.id), 'collab inconnu';
   assert exists (select 1 from anomalies where type = 'dossier_nouveau' and cle = '2000' and dossier_id = d.id), 'dossier nouveau';
-  assert not exists (select 1 from anomalies where type = 'collaborateur_inconnu' and cle is null), 'pas d anomalie sur nom nul';
+  assert (select count(*) from anomalies where type = 'collaborateur_inconnu' and dossier_id = d.id) = 1, 'une seule anomalie collaborateur_inconnu';
   assert jsonb_array_length(r->'anomalies') = 2, 'anomalies du retour ' || (r->'anomalies');
 end $$;
 
@@ -212,6 +212,82 @@ begin
   assert exists (select 1 from anomalies where type = 'erreur_dossier' and cle = '1002'), 'erreur_dossier';
   assert (select fin from journal_synchro where id = (r->>'journal_id')::uuid) is not null, 'fin renseignee';
   assert (r->>'echeances')::int = 2, 'compte echeances';
+end $$;
+
+-- isolation : pennylane_id non numerique ou absent
+do $$
+declare r jsonb;
+begin
+  r := sync_appliquer($j$ {"declarations_tva": [
+    {"pennylane_id": 1002, "periode_debut": "2026-03-01", "periode_fin": "2026-03-31", "statut": "accepted"},
+    {"pennylane_id": "abc", "periode_debut": "2026-03-01", "periode_fin": "2026-03-31", "statut": "accepted"},
+    {"periode_debut": "2026-03-01", "periode_fin": "2026-03-31", "statut": "accepted"},
+    {"pennylane_id": 1002, "periode_debut": "2026-04-01", "periode_fin": "2026-04-30", "statut": "accepted"}]} $j$::jsonb, 'mcp');
+  assert (select count(*) from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d2'
+          and periode_debut in (date '2026-03-01', date '2026-04-01')) = 2, 'valides appliquees';
+  assert (select count(*) from jsonb_array_elements(r->'anomalies') a where a->>'type' = 'erreur_dossier') = 2, 'deux erreur_dossier';
+  assert exists (select 1 from anomalies where type = 'erreur_dossier' and cle = 'abc'), 'cle abc';
+  assert (select fin from journal_synchro where id = (r->>'journal_id')::uuid) is not null, 'journal fin';
+  -- idem pour les fiches et les liasses
+  r := sync_appliquer($j$ {"dossiers": [{"pennylane_id": "abc"}, {"raison_sociale": "SANS ID"}],
+    "liasses": [{"statut": "accepted"}]} $j$::jsonb, 'mcp');
+  assert (select count(*) from jsonb_array_elements(r->'anomalies') a where a->>'type' = 'erreur_dossier') = 3, 'erreurs fiches et liasse';
+end $$;
+
+-- cles absentes : valeurs inchangees
+do $$
+declare r jsonb; d dossiers;
+begin
+  select * into d from dossiers where pennylane_id = 1001;
+  update dossiers set forme_juridique = 'SARL', categorie_fiscale = 'bic_is' where id = d.id;
+  r := sync_appliquer('{"dossiers":[{"pennylane_id":1001}]}'::jsonb, 'mcp');
+  assert (select regime_tva from dossiers where id = d.id) = 'mensuel', 'regime inchange';
+  assert (select csp_id from dossiers where id = d.id) = '00000000-0000-0000-0000-0000000000c1', 'csp inchange';
+  assert (select senior_id from dossiers where id = d.id) = '00000000-0000-0000-0000-000000000051', 'senior inchange';
+  assert (select manager_id from dossiers where id = d.id) = '00000000-0000-0000-0000-000000000041', 'manager inchange';
+  assert (select forme_juridique from dossiers where id = d.id) = 'SARL', 'forme inchangee';
+  assert jsonb_array_length(r->'anomalies') = 0, 'aucune anomalie';
+  -- null explicite : efface
+  perform sync_appliquer('{"dossiers":[{"pennylane_id":1001,"regime_tva":null,"manager":null}]}'::jsonb, 'mcp');
+  assert (select regime_tva from dossiers where id = d.id) = 'non_assujetti' and (select manager_id from dossiers where id = d.id) is null, 'null explicite';
+  update dossiers set regime_tva = 'mensuel', manager_id = '00000000-0000-0000-0000-000000000041' where id = d.id;
+end $$;
+
+-- classification TVA
+do $$
+declare r jsonb;
+begin
+  update dossiers set regime_tva = 'annuel' where pennylane_id = 1001;
+  perform sync_appliquer($j$ {"declarations_tva": [
+    {"pennylane_id": 1001, "periode_debut": "2026-07-01", "periode_fin": "2026-07-31", "statut": "pending"},
+    {"pennylane_id": 1001, "periode_debut": "2026-12-01", "periode_fin": "2026-12-31", "statut": "pending"},
+    {"pennylane_id": 1001, "periode_debut": "2026-01-01", "periode_fin": "2026-12-31", "statut": "pending"}]} $j$::jsonb, 'mcp');
+  assert exists (select 1 from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1' and type = 'tva_ca12_acompte_juillet' and periode_debut = date '2026-07-01'), 'juillet';
+  assert exists (select 1 from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1' and type = 'tva_ca12_acompte_decembre' and periode_debut = date '2026-12-01'), 'decembre';
+  assert (select exercice_id from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1' and type = 'tva_ca12_annuelle' and periode_debut = date '2026-01-01') = '00000000-0000-0000-0000-0000000000e1', 'annuelle avec exercice';
+  assert not exists (select 1 from anomalies where type = 'regime_tva_incoherent'), 'pas d incoherence';
+  -- annuel avec un mois de septembre
+  r := sync_appliquer($j$ {"declarations_tva": [
+    {"pennylane_id": 1001, "periode_debut": "2026-09-01", "periode_fin": "2026-09-30", "statut": "pending"}]} $j$::jsonb, 'mcp');
+  assert exists (select 1 from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1' and periode_debut = date '2026-09-01' and periode_fin = date '2026-09-30' and type = 'tva_mensuelle'), 'septembre mensuelle';
+  assert exists (select 1 from anomalies where type = 'regime_tva_incoherent' and cle = '2026-09-01'), 'incoherence annuel';
+  -- mensuel avec un trimestre
+  update dossiers set regime_tva = 'mensuel' where pennylane_id = 1001;
+  perform sync_appliquer($j$ {"declarations_tva": [
+    {"pennylane_id": 1001, "periode_debut": "2026-04-01", "periode_fin": "2026-06-30", "statut": "pending"}]} $j$::jsonb, 'mcp');
+  assert exists (select 1 from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1' and type = 'tva_trimestrielle' and periode_debut = date '2026-04-01'), 'trimestre';
+  assert exists (select 1 from anomalies where type = 'regime_tva_incoherent' and cle = '2026-04-01'), 'incoherence mensuel';
+  -- regime null : inference sans anomalie
+  update dossiers set regime_tva = null where pennylane_id = 1001;
+  perform sync_appliquer($j$ {"declarations_tva": [
+    {"pennylane_id": 1001, "periode_debut": "2026-01-01", "periode_fin": "2026-03-31", "statut": "pending"}]} $j$::jsonb, 'mcp');
+  assert exists (select 1 from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1' and type = 'tva_trimestrielle' and periode_debut = date '2026-01-01'), 'inference';
+  assert not exists (select 1 from anomalies where type = 'regime_tva_incoherent' and cle = '2026-01-01'), 'pas d anomalie sur inference';
+  -- a_faire efface date_depot
+  update echeances set statut = 'depose', date_depot = '2026-01-05' where dossier_id = '00000000-0000-0000-0000-0000000000d1' and type = 'tva_trimestrielle' and periode_debut = date '2026-01-01';
+  perform sync_appliquer($j$ {"declarations_tva": [
+    {"pennylane_id": 1001, "periode_debut": "2026-01-01", "periode_fin": "2026-03-31", "statut": "rejected"}]} $j$::jsonb, 'mcp');
+  assert (select date_depot from echeances where dossier_id = '00000000-0000-0000-0000-0000000000d1' and type = 'tva_trimestrielle' and periode_debut = date '2026-01-01') is null, 'date_depot effacee';
 end $$;
 
 reset role;

@@ -12,16 +12,50 @@ as $$
     '\s+', ' ', 'g')
 $$;
 
--- Identifiant du collaborateur actif correspondant au nom Pennylane (null si zero ou plusieurs).
-create function sync_collaborateur(p_nom text) returns uuid
+-- Collaborateur actif correspondant au nom Pennylane : id si une seule correspondance, sinon null ;
+-- nb = nombre de correspondances (plusieurs = nom ambigu).
+create function sync_collaborateur(p_nom text, out id uuid, out nb int)
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select case when count(*) = 1 then (array_agg(id))[1] end
-  from collaborateurs
-  where actif and normaliser_nom(nom_pennylane) = normaliser_nom(p_nom)
+  select case when count(*) = 1 then (array_agg(c.id))[1] end, count(*)::int
+  from collaborateurs c
+  where c.actif and normaliser_nom(c.nom_pennylane) = normaliser_nom(p_nom)
+$$;
+
+-- Anomalie erreur_dossier pour une ligne en echec (ne relit jamais la valeur brute).
+create function sync_erreur(p_pid bigint, p_cle text, p_message text) returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_array(jsonb_build_object('type', 'erreur_dossier',
+    'dossier_id', (select id from dossiers where pennylane_id = p_pid),
+    'cle', coalesce(p_cle, ''), 'message', coalesce(p_message, 'erreur inconnue')))
+$$;
+
+-- Ecrit une liste d'anomalies ; une anomalie qui ne peut pas etre ecrite est ignoree sans interrompre l'appel.
+create function sync_vider(p_loc jsonb, p_journal uuid) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_a jsonb;
+  v_res jsonb := '[]'::jsonb;
+begin
+  for v_a in select value from jsonb_array_elements(p_loc) loop
+    begin
+      v_res := v_res || sync_noter_anomalie(v_a, p_journal);
+    exception when others then
+      null;
+    end;
+  end loop;
+  return v_res;
+end;
 $$;
 
 create function sync_appliquer(p_payload jsonb, p_source text) returns jsonb
@@ -69,7 +103,16 @@ declare
   v_montant numeric;
   v_exist echeances;
   v_garde boolean;
-  v_insere boolean;
+  v_cle text;
+  v_incoherent boolean;
+  v_regime_inconnu boolean;
+  v_cles text[];
+  v_ids uuid[];
+  v_has boolean[];
+  v_nb int;
+  v_cid uuid;
+  v_inconnus jsonb;
+  i int;
 begin
   insert into journal_synchro (source, nature)
   values (p_source, case when jsonb_array_length(v_decls) + jsonb_array_length(v_liasses) = 0
@@ -79,65 +122,77 @@ begin
   -- Dossiers
   for v_item in select value from jsonb_array_elements(v_dossiers) loop
     v_loc := '[]'::jsonb;
+    v_pid := null;
+    v_inconnus := '[]'::jsonb;
+    v_cle := coalesce(v_item ->> 'pennylane_id', '');
     begin
       v_pid := (v_item ->> 'pennylane_id')::bigint;
-      v_raw := v_item ->> 'regime_tva';
-      v_regime_set := true;
-      v_regime := null;
-      if v_raw is null or lower(v_raw) = 'none' then
-        v_regime := 'non_assujetti';
-      elsif lower(v_raw) = 'monthly' then v_regime := 'mensuel';
-      elsif lower(v_raw) = 'quarterly' then v_regime := 'trimestriel';
-      elsif lower(v_raw) in ('yearly', 'annual', 'annually') then v_regime := 'annuel';
-      else v_regime_set := false;
+      if v_pid is null then
+        raise exception 'pennylane_id manquant';
       end if;
 
-      v_csp := null; v_senior := null; v_manager := null;
-      v_nom := nullif(btrim(coalesce(v_item ->> 'comptable', '')), '');
-      if v_nom is not null then
-        v_csp := sync_collaborateur(v_nom);
+      -- Regime : cle absente = inchange ; null ou none = non_assujetti ; valeur inconnue = inchange + anomalie.
+      v_regime_set := false;
+      v_regime_inconnu := false;
+      v_regime := null;
+      if v_item ? 'regime_tva' then
+        v_raw := v_item ->> 'regime_tva';
+        if v_raw is null or lower(v_raw) = 'none' then
+          v_regime := 'non_assujetti'; v_regime_set := true;
+        elsif lower(v_raw) = 'monthly' then v_regime := 'mensuel'; v_regime_set := true;
+        elsif lower(v_raw) = 'quarterly' then v_regime := 'trimestriel'; v_regime_set := true;
+        elsif lower(v_raw) in ('yearly', 'annual', 'annually') then v_regime := 'annuel'; v_regime_set := true;
+        else v_regime_inconnu := true;
+        end if;
       end if;
-      v_nom := nullif(btrim(coalesce(v_item ->> 'superviseur', '')), '');
-      if v_nom is not null then
-        v_senior := sync_collaborateur(v_nom);
-      end if;
-      v_nom := nullif(btrim(coalesce(v_item ->> 'manager', '')), '');
-      if v_nom is not null then
-        v_manager := sync_collaborateur(v_nom);
-      end if;
+
+      -- Intervenants : cle absente = inchange ; nom vide = affectation nulle sans anomalie.
+      v_cles := array['comptable', 'superviseur', 'manager'];
+      v_ids := array[null, null, null]::uuid[];
+      v_has := array[false, false, false];
+      for i in 1..3 loop
+        v_has[i] := v_item ? v_cles[i];
+        v_nom := nullif(btrim(coalesce(v_item ->> v_cles[i], '')), '');
+        if v_has[i] and v_nom is not null then
+          select c.id, c.nb into v_cid, v_nb from sync_collaborateur(v_nom) c;
+          v_ids[i] := v_cid;
+          if v_cid is null then
+            v_inconnus := v_inconnus || jsonb_build_object('nom', v_nom, 'nb', v_nb);
+          end if;
+        end if;
+      end loop;
 
       insert into dossiers (pennylane_id, raison_sociale, siren, forme_juridique, regime_tva,
                             categorie_fiscale, regime_fiscal, csp_id, senior_id, manager_id, derniere_synchro)
-      values (v_pid, v_item ->> 'raison_sociale', nullif(v_item ->> 'siren', ''), v_item ->> 'forme_juridique',
+      values (v_pid, coalesce(v_item ->> 'raison_sociale', (select d.raison_sociale from dossiers d where d.pennylane_id = v_pid)), nullif(v_item ->> 'siren', ''), v_item ->> 'forme_juridique',
               case when v_regime_set then v_regime end,
-              v_item ->> 'categorie_fiscale', v_item ->> 'regime_fiscal', v_csp, v_senior, v_manager, now())
+              v_item ->> 'categorie_fiscale', v_item ->> 'regime_fiscal', v_ids[1], v_ids[2], v_ids[3], now())
       on conflict (pennylane_id) do update set
-        raison_sociale = excluded.raison_sociale,
+        raison_sociale = case when v_item ? 'raison_sociale' then excluded.raison_sociale else dossiers.raison_sociale end,
         siren = coalesce(excluded.siren, dossiers.siren),
-        forme_juridique = excluded.forme_juridique,
+        forme_juridique = case when v_item ? 'forme_juridique' then excluded.forme_juridique else dossiers.forme_juridique end,
         regime_tva = case when v_regime_set then excluded.regime_tva else dossiers.regime_tva end,
-        categorie_fiscale = excluded.categorie_fiscale,
-        regime_fiscal = excluded.regime_fiscal,
-        csp_id = excluded.csp_id,
-        senior_id = excluded.senior_id,
-        manager_id = excluded.manager_id,
+        categorie_fiscale = case when v_item ? 'categorie_fiscale' then excluded.categorie_fiscale else dossiers.categorie_fiscale end,
+        regime_fiscal = case when v_item ? 'regime_fiscal' then excluded.regime_fiscal else dossiers.regime_fiscal end,
+        csp_id = case when v_has[1] then excluded.csp_id else dossiers.csp_id end,
+        senior_id = case when v_has[2] then excluded.senior_id else dossiers.senior_id end,
+        manager_id = case when v_has[3] then excluded.manager_id else dossiers.manager_id end,
         derniere_synchro = now()
       returning id, (xmax = 0) into v_dossier_id, v_nouveau;
 
       if v_nouveau then
         v_loc := v_loc || jsonb_build_object('type', 'dossier_nouveau', 'dossier_id', v_dossier_id,
-          'cle', v_pid::text, 'message', 'Nouveau dossier créé depuis Pennylane : ' || (v_item ->> 'raison_sociale'));
+          'cle', v_pid::text, 'message', format('Nouveau dossier créé depuis Pennylane : %s', v_item ->> 'raison_sociale'));
       end if;
-      if not v_regime_set then
+      if v_regime_inconnu then
         v_loc := v_loc || jsonb_build_object('type', 'regime_tva_inconnu', 'dossier_id', v_dossier_id,
-          'cle', v_raw, 'message', 'Régime de TVA Pennylane inconnu : ' || v_raw);
+          'cle', v_raw, 'message', format('Régime de TVA Pennylane inconnu : %s', v_raw));
       end if;
-      foreach v_nom in array array['comptable', 'superviseur', 'manager'] loop
-        if nullif(btrim(coalesce(v_item ->> v_nom, '')), '') is not null
-           and sync_collaborateur(v_item ->> v_nom) is null then
-          v_loc := v_loc || jsonb_build_object('type', 'collaborateur_inconnu', 'dossier_id', v_dossier_id,
-            'cle', v_item ->> v_nom, 'message', 'Intervenant Pennylane introuvable : ' || (v_item ->> v_nom));
-        end if;
+      for v_a in select value from jsonb_array_elements(v_inconnus) loop
+        v_loc := v_loc || jsonb_build_object('type', 'collaborateur_inconnu', 'dossier_id', v_dossier_id,
+          'cle', v_a ->> 'nom',
+          'message', format('Intervenant Pennylane %s : %s',
+                            case when (v_a ->> 'nb')::int > 1 then 'ambigu' else 'introuvable' end, v_a ->> 'nom'));
       end loop;
 
       for v_ex in select value from jsonb_array_elements(coalesce(v_item -> 'exercices', '[]'::jsonb)) loop
@@ -148,34 +203,51 @@ begin
 
       v_nb_dossiers := v_nb_dossiers + 1;
     exception when others then
-      v_loc := jsonb_build_array(jsonb_build_object('type', 'erreur_dossier',
-        'dossier_id', (select id from dossiers where pennylane_id = (v_item ->> 'pennylane_id')::bigint),
-        'cle', coalesce(v_item ->> 'pennylane_id', ''), 'message', sqlerrm));
+      v_loc := sync_erreur(v_pid, v_cle, sqlerrm);
     end;
-    for v_a in select value from jsonb_array_elements(v_loc) loop
-      v_anoms := v_anoms || sync_noter_anomalie(v_a, v_journal);
-    end loop;
+    v_anoms := v_anoms || sync_vider(v_loc, v_journal);
   end loop;
 
   -- Declarations de TVA
   for v_item in select value from jsonb_array_elements(v_decls) loop
     v_loc := '[]'::jsonb;
     v_loc_ech := 0;
+    v_pid := null;
+    v_cle := coalesce(v_item ->> 'pennylane_id', '');
     begin
       v_pid := (v_item ->> 'pennylane_id')::bigint;
+      if v_pid is null then
+        raise exception 'pennylane_id manquant';
+      end if;
       v_deb := (v_item ->> 'periode_debut')::date;
       v_fin := (v_item ->> 'periode_fin')::date;
       v_duree := v_fin - v_deb + 1;
       select * into v_dossier from dossiers where pennylane_id = v_pid;
       if not found then
         v_loc := v_loc || jsonb_build_object('type', 'dossier_inconnu', 'dossier_id', null,
-          'cle', v_pid::text, 'message', 'Déclaration de TVA reçue pour un dossier inconnu : ' || v_pid);
+          'cle', v_pid::text, 'message', format('Déclaration de TVA reçue pour un dossier inconnu : %s', v_pid));
       else
         v_regime_eff := v_dossier.regime_tva;
+        v_incoherent := false;
         if v_regime_eff is null or v_regime_eff = 'non_assujetti' then
           v_regime_eff := case when v_duree <= 31 then 'mensuel'
                                when v_duree <= 100 then 'trimestriel'
                                else 'annuel' end;
+        else
+          v_incoherent := case v_regime_eff
+            when 'mensuel' then v_duree > 31
+            when 'trimestriel' then v_duree <= 31 or v_duree > 100
+            else v_duree <= 62 and extract(month from v_fin) not in (7, 12)
+          end;
+          if v_incoherent then
+            v_regime_eff := case when v_duree <= 31 then 'mensuel'
+                                 when v_duree <= 100 then 'trimestriel'
+                                 else 'annuel' end;
+            v_loc := v_loc || jsonb_build_object('type', 'regime_tva_incoherent', 'dossier_id', v_dossier.id,
+              'cle', v_deb::text,
+              'message', format('Période de TVA du %s au %s incohérente avec le régime %s du dossier',
+                                v_deb, v_fin, v_dossier.regime_tva));
+          end if;
         end if;
         v_type := case v_regime_eff
           when 'mensuel' then 'tva_mensuelle'
@@ -206,7 +278,7 @@ begin
           update echeances set
             statut = case when v_garde then statut else v_statut end,
             source_statut = case when v_garde then source_statut else 'pennylane' end,
-            date_depot = case when v_garde then date_depot else coalesce(v_depot, date_depot) end,
+            date_depot = case when v_garde then date_depot when v_statut = 'a_faire' then null else coalesce(v_depot, date_depot) end,
             statut_pennylane = v_statut_pl,
             montant = coalesce(v_montant, montant),
             date_limite = coalesce(v_limite_payload, date_limite),
@@ -222,38 +294,39 @@ begin
                   v_statut, v_statut_pl, 'pennylane', v_depot, v_montant);
           v_loc := v_loc || jsonb_build_object('type', 'declaration_sans_echeance', 'dossier_id', v_dossier.id,
             'cle', v_type::text || ' ' || v_deb::text || ' ' || v_fin::text,
-            'message', 'Déclaration de TVA sans échéance correspondante : ' || v_type::text
-                       || ' du ' || v_deb::text || ' au ' || v_fin::text);
+            'message', format('Déclaration de TVA sans échéance correspondante : %s du %s au %s', v_type, v_deb, v_fin));
         end if;
         v_loc_ech := 1;
       end if;
     exception when others then
       v_loc_ech := 0;
-      v_loc := jsonb_build_array(jsonb_build_object('type', 'erreur_dossier',
-        'dossier_id', (select id from dossiers where pennylane_id = (v_item ->> 'pennylane_id')::bigint),
-        'cle', coalesce(v_item ->> 'pennylane_id', ''), 'message', sqlerrm));
+      v_loc := sync_erreur(v_pid, v_cle, sqlerrm);
     end;
     v_nb_echeances := v_nb_echeances + v_loc_ech;
-    for v_a in select value from jsonb_array_elements(v_loc) loop
-      v_anoms := v_anoms || sync_noter_anomalie(v_a, v_journal);
-    end loop;
+    v_anoms := v_anoms || sync_vider(v_loc, v_journal);
   end loop;
 
   -- Liasses
   for v_item in select value from jsonb_array_elements(v_liasses) loop
     v_loc := '[]'::jsonb;
     v_loc_ech := 0;
+    v_pid := null;
+    v_cle := coalesce(v_item ->> 'pennylane_id', '');
     begin
       v_pid := (v_item ->> 'pennylane_id')::bigint;
+      if v_pid is null then
+        raise exception 'pennylane_id manquant';
+      end if;
       v_deb := (v_item ->> 'periode_debut')::date;
       v_fin := (v_item ->> 'periode_fin')::date;
       select * into v_dossier from dossiers where pennylane_id = v_pid;
       if not found then
         v_loc := v_loc || jsonb_build_object('type', 'dossier_inconnu', 'dossier_id', null,
-          'cle', v_pid::text, 'message', 'Liasse reçue pour un dossier inconnu : ' || v_pid);
+          'cle', v_pid::text, 'message', format('Liasse reçue pour un dossier inconnu : %s', v_pid));
       else
         select id, etape_actuelle into v_exercice, v_etape from exercices
-         where dossier_id = v_dossier.id and date_fin = v_fin;
+         where dossier_id = v_dossier.id and date_fin = v_fin
+         for update;
         if not found then
           insert into exercices (dossier_id, date_debut, date_fin)
           values (v_dossier.id, v_deb, v_fin)
@@ -274,7 +347,7 @@ begin
             source_statut = case when v_garde then source_statut else 'pennylane' end,
             date_depot = case when v_garde then date_depot
                               when v_statut = 'depose' then coalesce(v_depot, date_depot, aujourdhui())
-                              else date_depot end,
+                              else null end,
             statut_pennylane = v_statut_pl,
             date_limite = coalesce(v_limite_payload, date_limite),
             date_limite_source = case when v_limite_payload is not null then 'pennylane' else date_limite_source end,
@@ -295,8 +368,7 @@ begin
           if v_etape < 5 then
             v_loc := v_loc || jsonb_build_object('type', 'etapes_non_renseignees', 'dossier_id', v_dossier.id,
               'cle', v_fin::text,
-              'message', 'Liasse acceptée alors que l''exercice clos le ' || v_fin::text
-                         || ' était à l''étape ' || v_etape);
+              'message', format('Liasse acceptée alors que l''exercice clos le %s était à l''étape %s', v_fin, v_etape));
           end if;
           update exercices set etape_actuelle = 6 where id = v_exercice;
           insert into historique_etapes (exercice_id, etape, sens, date, auteur_id)
@@ -305,14 +377,10 @@ begin
       end if;
     exception when others then
       v_loc_ech := 0;
-      v_loc := jsonb_build_array(jsonb_build_object('type', 'erreur_dossier',
-        'dossier_id', (select id from dossiers where pennylane_id = (v_item ->> 'pennylane_id')::bigint),
-        'cle', coalesce(v_item ->> 'pennylane_id', ''), 'message', sqlerrm));
+      v_loc := sync_erreur(v_pid, v_cle, sqlerrm);
     end;
     v_nb_echeances := v_nb_echeances + v_loc_ech;
-    for v_a in select value from jsonb_array_elements(v_loc) loop
-      v_anoms := v_anoms || sync_noter_anomalie(v_a, v_journal);
-    end loop;
+    v_anoms := v_anoms || sync_vider(v_loc, v_journal);
   end loop;
 
   update journal_synchro
@@ -333,7 +401,7 @@ as $$
 begin
   insert into anomalies (type, dossier_id, cle, message, journal_id)
   values (p_a ->> 'type', nullif(p_a ->> 'dossier_id', '')::uuid, coalesce(p_a ->> 'cle', ''),
-          p_a ->> 'message', p_journal)
+          coalesce(p_a ->> 'message', ''), p_journal)
   on conflict (type, coalesce(dossier_id, '00000000-0000-0000-0000-000000000000'), cle)
     where resolue_le is null do nothing;
   return jsonb_build_object('type', p_a ->> 'type', 'dossier_id', p_a -> 'dossier_id', 'message', p_a ->> 'message');
@@ -359,6 +427,10 @@ $$;
 revoke execute on function normaliser_nom(text) from public, anon, authenticated;
 revoke execute on function sync_collaborateur(text) from public, anon, authenticated;
 revoke execute on function sync_noter_anomalie(jsonb, uuid) from public, anon, authenticated;
+revoke execute on function sync_erreur(bigint, text, text) from public, anon, authenticated;
+revoke execute on function sync_vider(jsonb, uuid) from public, anon, authenticated;
+grant execute on function sync_erreur(bigint, text, text) to service_role;
+grant execute on function sync_vider(jsonb, uuid) to service_role;
 revoke execute on function sync_appliquer(jsonb, text) from public, anon, authenticated;
 revoke execute on function dossiers_a_verifier() from public, anon, authenticated;
 grant execute on function normaliser_nom(text) to service_role;
