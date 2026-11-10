@@ -1,5 +1,9 @@
 -- Circuit de production des bilans : validation des etapes 1 a 5 et retours en arriere.
 
+-- Un retour a l'etape 0 doit etre trace tel quel dans l'historique.
+alter table historique_etapes drop constraint historique_etapes_etape_check;
+alter table historique_etapes add check (etape between 0 and 6);
+
 create function valider_etape(p_exercice uuid, p_etape int, p_commentaire text default null)
 returns void
 language plpgsql security definer set search_path = public
@@ -15,6 +19,10 @@ begin
   select etape_actuelle into v_actuelle from exercices where id = p_exercice for update;
   if not found then
     raise exception 'Exercice introuvable.' using errcode = 'P0001';
+  end if;
+
+  if p_etape is null then
+    raise exception 'L''étape à valider est obligatoire.' using errcode = 'P0001';
   end if;
 
   if p_etape = 6 then
@@ -68,13 +76,12 @@ begin
     raise exception 'Un commentaire est obligatoire pour revenir en arrière.' using errcode = 'P0001';
   end if;
 
-  if p_etape < 0 or p_etape >= v_actuelle then
+  if p_etape is null or p_etape < 0 or p_etape >= v_actuelle then
     raise exception 'Le retour doit viser une étape antérieure à l''étape actuelle.' using errcode = 'P0001';
   end if;
 
-  -- historique_etapes.etape va de 1 à 6 : un retour à l'étape 0 est tracé sur l'étape 1.
   insert into historique_etapes (exercice_id, etape, sens, date, auteur_id, commentaire)
-  values (p_exercice, greatest(p_etape, 1), 'retour', now(), v_moi.id, p_commentaire);
+  values (p_exercice, p_etape, 'retour', now(), v_moi.id, p_commentaire);
 
   update exercices set etape_actuelle = p_etape where id = p_exercice;
 end

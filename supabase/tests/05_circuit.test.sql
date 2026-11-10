@@ -71,6 +71,24 @@ begin
   assert (select auteur_id from historique_etapes where sens = 'retour') = '00000000-0000-0000-0000-000000000041', 'auteur du retour';
 end $$;
 
+-- entrees invalides
+do $$
+begin
+  assert code_erreur($q$select valider_etape('00000000-0000-0000-0000-0000000000e1', null)$q$) = 'P0001', 'etape nulle (valider)';
+  assert code_erreur($q$select revenir_etape('00000000-0000-0000-0000-0000000000e1', null, 'x')$q$) = 'P0001', 'etape nulle (revenir)';
+  assert code_erreur($q$select valider_etape('00000000-0000-0000-0000-0000000000ff', 1)$q$) = 'P0001', 'exercice inconnu (valider)';
+  assert code_erreur($q$select revenir_etape('00000000-0000-0000-0000-0000000000ff', 0, 'x')$q$) = 'P0001', 'exercice inconnu (revenir)';
+end $$;
+
+-- retour a l'etape 0 : trace telle quelle
+do $$ begin perform revenir_etape('00000000-0000-0000-0000-0000000000e1', 0, 'Reprise complete'); end $$;
+do $$
+begin
+  assert (select etape_actuelle from exercices where id = '00000000-0000-0000-0000-0000000000e1') = 0, 'etape_actuelle = 0';
+  assert exists (select 1 from historique_etapes where exercice_id = '00000000-0000-0000-0000-0000000000e1'
+                 and etape = 0 and sens = 'retour'), 'historique etape 0 retour';
+end $$;
+
 -- inactif
 set local request.jwt.claims = '{"email":"inactif@cabinet.test"}';
 do $$
