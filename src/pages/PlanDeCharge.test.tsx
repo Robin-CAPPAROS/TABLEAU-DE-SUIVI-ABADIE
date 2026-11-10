@@ -37,6 +37,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.useRealTimers();
   vi.mocked(useMoi).mockReturnValue({ moi: MOI_MANAGER, chargement: false });
+  vi.mocked(listerExercices).mockResolvedValue([]);
   vi.mocked(listerCollaborateurs).mockResolvedValue([{ id: 's1', trigramme: 'STE', prenom: 'Sam', nom: 'Test' }]);
 });
 
@@ -75,10 +76,11 @@ test('le filtre Senior restreint les données affichées', async () => {
     { semaine: LUNDI, senior_id: 's2', a_faire: 3, supervises: 0 },
   ]);
   rendre();
-  const bouton = await screen.findByRole('button', { name: 'Voir la semaine du 09/11/2026' });
+  const ligne = async () => (await screen.findByRole('button', { name: 'Voir la semaine du 09/11/2026' })).closest('tr')!;
+  const cellules = (tr: HTMLElement) => Array.from(tr.querySelectorAll('td')).slice(0, 3).map((td) => td.textContent);
+  expect(cellules(await ligne())).toEqual(['09/11/2026', '5', '1']);
   fireEvent.change(screen.getByLabelText('Senior'), { target: { value: 's1' } });
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Voir la semaine du 09/11/2026' }).closest('tr')).toHaveTextContent(/2\s*1/));
-  expect(bouton).toBeDefined();
+  await waitFor(async () => expect(cellules(await ligne())).toEqual(['09/11/2026', '2', '1']));
 });
 
 test('un manager modifie la date cible, un CSP non', async () => {
@@ -99,4 +101,16 @@ test('un manager modifie la date cible, un CSP non', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Voir la semaine du 09/11/2026' }));
   expect(await screen.findByText('Alpha')).toBeInTheDocument();
   expect(screen.queryByLabelText('Date cible de Alpha')).not.toBeInTheDocument();
+});
+
+test('les options Manager viennent des exercices', async () => {
+  vi.mocked(planDeCharge).mockResolvedValue([]);
+  vi.mocked(listerCollaborateurs).mockResolvedValue([
+    { id: 'm1', trigramme: 'MTE', prenom: 'Manon', nom: 'Test' },
+    { id: 'z9', trigramme: 'ZZZ', prenom: 'Zoe', nom: 'Test' },
+  ]);
+  vi.mocked(listerExercices).mockResolvedValue([exercice({ manager_id: 'm1' })]);
+  rendre();
+  expect(await screen.findByRole('option', { name: 'MTE' })).toBeInTheDocument();
+  expect(screen.queryByRole('option', { name: 'ZZZ' })).not.toBeInTheDocument();
 });

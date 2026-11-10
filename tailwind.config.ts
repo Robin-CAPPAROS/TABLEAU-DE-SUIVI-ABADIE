@@ -1,5 +1,6 @@
 import type { Config } from 'tailwindcss';
 import animate from 'tailwindcss-animate';
+import { CHARTE } from './src/lib/charte';
 
 const config: Config = {
   darkMode: ['class'],
@@ -7,9 +8,9 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        marine: '#0E2A42',
-        primaire: '#2784C6',
-        gris: '#B2B2B1',
+        marine: CHARTE.marine,
+        primaire: CHARTE.primaire,
+        gris: CHARTE.gris,
       },
       fontFamily: {
         cabinet: ['"Century Gothic"', '"CenturyGothic"', '"AppleGothic"', '"Questrial"', 'sans-serif'],

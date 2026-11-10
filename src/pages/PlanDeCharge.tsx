@@ -12,10 +12,13 @@ import type { LigneExercice } from '@/data/types';
 import Bloc from '@/components/Bloc';
 import { messageErreur } from '@/lib/erreurs';
 import { formaterDate } from '@/lib/format';
+import { CHARTE, teintes } from '@/lib/charte';
 import { LIBELLES_ETAPE } from '@/lib/libelles';
 import { cn } from '@/lib/utils';
 
 const SEMAINES = 26;
+const SANS_SENIOR = 'none';
+type Clic = { lundi?: ISODate; payload?: { lundi?: ISODate } };
 const CHAMP = 'rounded border border-gris px-2 py-1 text-sm';
 
 /** Lundi de la semaine de la date donnée. */
@@ -75,6 +78,7 @@ export default function PlanDeCharge() {
   };
   const plan = useQuery({ queryKey: ['plan', debut, filtres], queryFn: () => planDeCharge(debut, SEMAINES, filtres) });
   const { data: collaborateurs = [] } = useQuery({ queryKey: ['collaborateurs'], queryFn: listerCollaborateurs });
+  const tous = useQuery({ queryKey: ['exercices', 'managers'], queryFn: () => listerExercices({ mesDossiers: false }, moi!.id), enabled: !!moi });
   const liste = useQuery({
     queryKey: ['exercices', 'plan', semaine, filtres, seniorId, moi?.id],
     enabled: !!moi && !!semaine,
@@ -85,19 +89,30 @@ export default function PlanDeCharge() {
 
   const lignes = plan.data ?? [];
   const trigramme = (id: string) => collaborateurs.find((c) => c.id === id)?.trigramme ?? '?';
-  const seniors = [...new Set(lignes.map((l) => l.senior_id).filter((id): id is string => !!id))]
-    .map((id) => ({ id, tri: trigramme(id) }))
+  const nom = (id: string | null) => (id ? trigramme(id) : 'Non affecté');
+  const seniors = [...new Set(lignes.map((l) => l.senior_id))]
+    .map((id) => ({ id: id ?? SANS_SENIOR, tri: nom(id) }))
     .sort((a, b) => a.tri.localeCompare(b.tri));
   const visibles = lignes.filter((l) => !seniorId || l.senior_id === seniorId);
+  const segments = seniors.filter((s) => !seniorId || s.id === seniorId);
+  const nbSegments = Math.max(segments.length, 1);
+  const teintesFaire = teintes(CHARTE.primaire, nbSegments);
+  const teintesSup = teintes(CHARTE.gris, nbSegments);
+  const managers = [...new Set((tous.data ?? []).map((x) => x.manager_id).filter((id): id is string => !!id))]
+    .map((id) => ({ id, tri: trigramme(id) }))
+    .sort((a, b) => a.tri.localeCompare(b.tri));
   const semaines = Array.from({ length: SEMAINES }, (_, i) => {
     const lundi = ajouterJours(debut, 7 * i);
     const doc = visibles.filter((l) => l.semaine === lundi);
-    return {
-      lundi,
-      label: formaterDate(lundi),
-      a_faire: doc.reduce((s, l) => s + l.a_faire, 0),
-      supervises: doc.reduce((s, l) => s + l.supervises, 0),
-    };
+    const d: Record<string, string | number> = { lundi, label: formaterDate(lundi), a_faire: 0, supervises: 0 };
+    for (const l of doc) {
+      const k = l.senior_id ?? SANS_SENIOR;
+      d[`af_${k}`] = ((d[`af_${k}`] as number) ?? 0) + l.a_faire;
+      d[`su_${k}`] = ((d[`su_${k}`] as number) ?? 0) + l.supervises;
+      d.a_faire = (d.a_faire as number) + l.a_faire;
+      d.supervises = (d.supervises as number) + l.supervises;
+    }
+    return d as { lundi: ISODate; label: string; a_faire: number; supervises: number };
   });
   const dossiersSemaine = semaine
     ? (liste.data ?? []).filter((x) => x.date_cible && x.date_cible >= semaine && x.date_cible < ajouterJours(semaine, 7))
@@ -114,14 +129,14 @@ export default function PlanDeCharge() {
           Manager
           <select className={CHAMP} value={managerId} onChange={(e) => { setManagerId(e.target.value); setSemaine(null); }}>
             <option value="">Tous</option>
-            {collaborateurs.map((c) => <option key={c.id} value={c.id}>{c.trigramme} ({c.prenom} {c.nom})</option>)}
+            {managers.map((m) => <option key={m.id} value={m.id}>{m.tri}</option>)}
           </select>
         </label>
         <label className="flex flex-col text-xs font-bold">
           Senior
           <select className={CHAMP} value={seniorId} onChange={(e) => { setSeniorId(e.target.value); setSemaine(null); }}>
             <option value="">Tous</option>
-            {seniors.map((s) => <option key={s.id} value={s.id}>{s.tri}</option>)}
+            {seniors.filter((s) => s.id !== SANS_SENIOR).map((s) => <option key={s.id} value={s.id}>{s.tri}</option>)}
           </select>
         </label>
       </div>
@@ -135,8 +150,12 @@ export default function PlanDeCharge() {
               <YAxis allowDecimals={false} />
               <Tooltip />
               <Legend />
-              <Bar dataKey="a_faire" name="À faire" stackId="p" fill="#2784C6" onClick={(d: { lundi?: ISODate }) => d.lundi && setSemaine(d.lundi)} cursor="pointer" />
-              <Bar dataKey="supervises" name="Supervisés" stackId="p" fill="#B2B2B1" onClick={(d: { lundi?: ISODate }) => d.lundi && setSemaine(d.lundi)} cursor="pointer" />
+              {segments.map((sg, i) => (
+                <Bar key={`af_${sg.id}`} dataKey={`af_${sg.id}`} name={`${sg.tri} : à faire`} stackId="afaire" fill={teintesFaire[i]} cursor="pointer" onClick={(d: Clic) => { const l = d.payload?.lundi ?? d.lundi; if (l) setSemaine(l); }} />
+              ))}
+              {segments.map((sg, i) => (
+                <Bar key={`su_${sg.id}`} dataKey={`su_${sg.id}`} name={`${sg.tri} : supervisés`} stackId="supervises" fill={teintesSup[i]} cursor="pointer" onClick={(d: Clic) => { const l = d.payload?.lundi ?? d.lundi; if (l) setSemaine(l); }} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -170,7 +189,7 @@ export default function PlanDeCharge() {
       {semaine && (
         <Bloc titre={`Dossiers de la semaine du ${formaterDate(semaine)}`} requetes={[liste]} vide={dossiersSemaine.length === 0}>
           <ul className="space-y-2">
-            {dossiersSemaine.map((x) => <LigneSemaine key={x.id} x={x} peutModifier={peutModifierDossier(moi)} />)}
+            {dossiersSemaine.map((x) => <LigneSemaine key={`${x.id}-${x.date_cible}`} x={x} peutModifier={peutModifierDossier(moi)} />)}
           </ul>
         </Bloc>
       )}

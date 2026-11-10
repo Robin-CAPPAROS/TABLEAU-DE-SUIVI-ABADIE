@@ -97,7 +97,7 @@ function ActionsExercice({ x, moi }: { x: LigneExercice; moi: Moi }) {
           </button>
         )}
         {peutRetour && (
-          <button type="button" className={bouton} onClick={() => { setRetour((v) => !v); setEtape(0); }}>
+          <button type="button" className={bouton} onClick={() => { setRetour((v) => !v); setEtape(0); mutation.reset(); }}>
             Revenir à une étape
           </button>
         )}
