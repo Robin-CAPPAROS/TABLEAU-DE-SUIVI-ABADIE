@@ -1,0 +1,6 @@
+# Configuration Supabase locale minimale
+project_id = "tableau-suivi-echeances"
+
+[db]
+port = 54322
+major_version = 15
