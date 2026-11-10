@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { verifierCle } from '../_shared/cle.ts';
 import { genererEcheancesDossier } from '../_shared/domain/generation.ts';
-import { dateDuJourParis } from '../_shared/domain/dates.ts';
+import { ajouterJours, dateDuJourParis } from '../_shared/domain/dates.ts';
 import type {
   AnomalieGeneration,
   DossierRegles,
@@ -42,7 +42,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: journal, error: errJournal } = await supabase
     .from('journal_synchro')
     .insert({ source: 'outil', nature: 'generation' })
-    .select('id')
+    .select('id, debut')
     .single();
   if (errJournal || !journal) return reponse({ erreur: errJournal?.message ?? 'Journal indisponible' }, 500);
 
@@ -78,6 +78,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       ajouter(r);
     }
 
+    // Tous les paquets ont réussi : les échéances calculées non regénérées par cette exécution
+    // sont devenues sans objet (R28). Le début d'exécution est l'heure de la base (journal.debut).
+    const { data: obsoletes, error: errFinal } = await supabase.rpc('finaliser_generation', {
+      p_debut: journal.debut,
+      p_fenetre_debut: ajouterJours(aujourdhui, -60),
+    });
+    if (errFinal) throw new Error(errFinal.message);
+    console.log(`Génération : ${obsoletes} échéance(s) devenue(s) non applicable(s)`);
+
     const { error: errFin } = await supabase
       .from('journal_synchro')
       .update({
@@ -91,7 +100,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return reponse({ erreur: errFin.message }, 500);
     }
 
-    return reponse({ dossiers: donnees.dossiers.length, echeances: echeances.length, ...totaux });
+    return reponse({ dossiers: donnees.dossiers.length, echeances: echeances.length, ...totaux, non_applicables: obsoletes });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     // fin reste nul : une ligne ouverte marque une exécution en échec.

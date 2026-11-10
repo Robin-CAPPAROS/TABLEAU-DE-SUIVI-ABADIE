@@ -27,12 +27,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const validation = validerPayload(corps);
   if (!validation.ok) return reponse({ erreur: validation.erreur }, 400);
-  const { payload } = validation;
+  const { payload, rejets } = validation;
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   );
+
+  // Éléments invalides : écartés du lot et consignés en anomalies (une anomalie identique
+  // déjà ouverte est conservée : violation d'unicité 23505 ignorée).
+  for (const r of rejets) {
+    const { error: errAnomalie } = await supabase.from('anomalies').insert({
+      type: 'erreur_dossier',
+      dossier_id: null,
+      cle: r.pennylane_id !== null ? String(r.pennylane_id) : `${r.liste}[${r.index}]`,
+      message: r.erreur,
+    });
+    if (errAnomalie && errAnomalie.code !== '23505') {
+      console.error('Anomalie de validation non enregistrée', errAnomalie.message);
+    }
+  }
 
   const { data, error } = await supabase.rpc('sync_appliquer', {
     p_payload: payload,
@@ -42,5 +56,5 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error('sync_appliquer en échec', error.message);
     return reponse({ erreur: error.message }, 500);
   }
-  return reponse(data);
+  return reponse({ ...(data as Record<string, unknown>), rejets });
 });
