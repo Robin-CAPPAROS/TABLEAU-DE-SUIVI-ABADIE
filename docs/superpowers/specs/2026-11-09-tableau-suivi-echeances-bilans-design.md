@@ -17,12 +17,15 @@ Le cabinet suit aujourd'hui ses échéances fiscales et l'avancement des bilans 
 
 **Objectif** : remplacer, pour le périmètre V1, le classeur par une application web hébergée, partagée par les 22 membres du cabinet, dont les statuts fiscaux sont alimentés automatiquement par Pennylane.
 
+Au-delà du suivi, l'outil doit permettre de **piloter la production et sécuriser le cabinet** : limiter l'exposition aux pénalités de retard (majoration de 10 %, intérêts de retard de 0,20 % par mois), anticiper la saison fiscale (90 % des dossiers clôturent au 31 décembre) et conserver une piste d'audit des supervisions, utile au contrôle qualité de l'Ordre.
+
 ### Critères de succès
 
 1. À l'issue du pilote, le classeur n'est plus utilisé pour le suivi de la TVA, des liasses, de l'IS, de l'approbation et du dépôt au greffe, ni pour l'avancement des bilans.
 2. Les statuts de TVA et de liasse sont mis à jour sans aucune saisie manuelle.
 3. Chaque collaborateur identifie en moins d'une minute ses échéances de la semaine et ses dossiers en retard.
 4. Chaque manager voit en un écran les retards de son portefeuille et sa file de supervision.
+5. Les indicateurs de pilotage (section 8.7) sont calculés automatiquement et suivis d'une saison fiscale à l'autre.
 
 ## 2. Compréhension validée
 
@@ -40,6 +43,8 @@ Le cabinet suit aujourd'hui ses échéances fiscales et l'avancement des bilans 
 - Pour chaque déclaration de TVA : période, date limite, date de dépôt, statut (`accepted`, `accepted_and_paid`), montant.
 - Pour chaque liasse : exercice, catégorie fiscale, statut de télétransmission.
 - Correspondance des rôles vérifiée sur un dossier : « Référent Maroc » du classeur = « Comptable » Pennylane (CSP) ; « Senior » = « Superviseur comptable » ; « Manager » = « Manager ».
+- La fiche Pennylane comporte un champ « comptable suppléant » (`substitute_accountant`).
+- Les liasses Pennylane portent un statut mais pas de date de télétransmission.
 - Pennylane ne liste une déclaration de TVA qu'une fois la période créée : la déclaration d'octobre 2026 d'un dossier mensuel, due le 19 novembre, n'y figurait pas encore.
 
 ## 3. Périmètre
@@ -49,12 +54,21 @@ Le cabinet suit aujourd'hui ses échéances fiscales et l'avancement des bilans 
 1. **Référentiel des dossiers et des affectations**.
 2. **Échéances fiscales** : TVA, liasse fiscale, acomptes et solde d'IS, approbation des comptes, dépôt au greffe.
 3. **Production des bilans** : circuit en 6 étapes, date cible, alertes de retard.
+4. **Récapitulatif hebdomadaire par e-mail** (section 8.6).
+5. **Alerte « TVA déposée mais non payée »** (section 8.4).
+6. **Suppléance pendant les absences**, fondée sur le suppléant Pennylane (section 8.5).
+7. **Plan de charge de la saison fiscale** (section 7.3).
+8. **Indicateurs de pilotage** (sections 7.7 et 8.7).
 
 ### Exclus de la V1 (évolutions envisagées)
 
 - CVAE, CFE, DAS2, 2777 / IFU.
 - Check-list de révision « Prépa PF » (24 points de contrôle).
-- Pilotage de la charge et des écarts de temps par collaborateur.
+- Pilotage de la charge en heures et des écarts de temps par collaborateur (le plan de charge de la V1 compte des dossiers, pas des heures).
+- Abonnement des échéances dans le calendrier Outlook.
+- Relance des pièces client depuis l'outil.
+- Repérage des crédits de TVA récurrents.
+- Pré-revue automatique de la balance avant supervision.
 - Suivi commercial (CIPP, ECF, accompagnement).
 - Déclarations personnelles (mission IRPP).
 
@@ -92,6 +106,8 @@ Le modèle de données de la V1 est conçu pour accueillir ces évolutions sans 
 │  · Tâche planifiée nocturne : génération des échéances       │
 │  · Fonction serveur « sync-pennylane » (porte d'entrée)      │
 │  · Fonction serveur « dossiers-a-verifier » (lecture)        │
+│  · Tâche planifiée du lundi : récapitulatif par e-mail       │
+│    (envoi via Microsoft Graph)                               │
 └──────────────▲───────────────────────────────────────────────┘
                │ format normalisé (section 9.2)
      ┌─────────┴──────────────┐
@@ -115,6 +131,7 @@ Les deux sources de synchronisation utilisent le même contrat d'entrée. Le pas
 | email | texte, unique | Adresse Microsoft 365 |
 | role | énuméré | `csp`, `senior`, `manager`, `associe` |
 | administrateur | booléen | Droit complémentaire au rôle (section 4) ; vrai pour Robin CAPPAROS et l'Associé à l'initialisation |
+| absence_debut, absence_fin | date, facultatives | Période d'absence en cours ou à venir (section 8.5) |
 | actif | booléen | Un collaborateur inactif ne peut plus se connecter |
 
 ### 6.2 `dossiers`
@@ -130,6 +147,7 @@ Les deux sources de synchronisation utilisent le même contrat d'entrée. Le pas
 | categorie_fiscale | texte | Pennylane (`fiscal_category`, ex. `bic_is`) |
 | regime_fiscal | texte | Pennylane (`fiscal_regime`, ex. `fr_rn`) |
 | csp_id, senior_id, manager_id | référence `collaborateurs` | Pennylane (comptable, superviseur, manager) |
+| suppleant_id | référence `collaborateurs`, facultative | Pennylane (comptable suppléant) |
 | equipe | entier (1, 2, 3) | Outil |
 | mission | énuméré : `tenue`, `revision`, `micro_bnc`, `irpp` | Outil |
 | statut | énuméré : `actif`, `sorti` | Outil ; un dossier sorti ne génère plus d'échéance |
@@ -179,12 +197,13 @@ Unicité : (dossier_id, date_fin).
 | date_depot | date | |
 | montant | décimal | |
 | auteur_id | référence, facultative | Auteur d'une saisie manuelle |
+| cause_retard | énuméré, facultatif : `cabinet`, `client`, `administration`, `autre` | Qualification d'un dépôt tardif (section 8.7) |
 
 Unicité : (dossier_id, type, periode_debut, periode_fin). Toute écriture se fait par insertion ou mise à jour sur cette clé.
 
 ### 6.6 `journal_synchro`
 
-Horodatage de début et de fin, source (`mcp` ou `api`), nature (`fiches` ou `declarations`), nombre de dossiers traités, nombre d'échéances mises à jour, liste des anomalies (type, dossier, message).
+Horodatage de début et de fin, source (`mcp`, `api` ou `outil`), nature (`fiches`, `declarations` ou `recapitulatif`), nombre de dossiers ou de destinataires traités, nombre d'échéances mises à jour, liste des anomalies (type, dossier, message).
 
 ### 6.7 `parametres`
 
@@ -193,6 +212,8 @@ Horodatage de début et de fin, source (`mcp` ou `api`), nature (`fiches` ou `de
 - Jours fériés.
 - Formes juridiques soumises à l'approbation et au dépôt au greffe.
 - Délai de dépôt au greffe après approbation.
+- Délai de l'alerte de paiement de TVA (5 jours par défaut).
+- Récapitulatif hebdomadaire : activé ou non, équipes destinataires (toutes par défaut), adresse d'envoi.
 
 ## 7. Écrans
 
@@ -202,6 +223,7 @@ Charte graphique : #0E2A42 pour la navigation, #2784C6 pour les actions et infor
 
 - **CSP et Senior** : échéances à 7 et 30 jours, échéances en retard, bilans par étape, dossiers en retard sur leur date cible.
 - **Manager et Associé** : mêmes indicateurs consolidés par équipe et par collaborateur, file des dossiers à superviser (étape 3 validée), anomalies de synchronisation.
+- **Tous** : les alertes « Paiement non constaté » (section 8.4) de leurs dossiers, et les dossiers dont ils assurent la suppléance (section 8.5), signalés comme tels.
 - Bandeau permanent : « Dernière synchronisation Pennylane : date et heure ».
 
 ### 7.2 Échéancier
@@ -209,13 +231,15 @@ Charte graphique : #0E2A42 pour la navigation, #2784C6 pour les actions et infor
 - Liste filtrable par type, statut, collaborateur, équipe, période ; vue calendrier mensuelle.
 - Code couleur : à faire, échéance sous 7 jours, en retard, déposé ou payé, non applicable.
 - Échéances à saisie manuelle : action « Marquer déposé » (date de dépôt, montant facultatif) et « Non applicable ».
-- Échéances synchronisées : mention « Pennylane », non modifiables.
+- Échéances synchronisées : mention « Pennylane », non modifiables, à deux exceptions près : « Confirmer le paiement » sur une alerte de paiement (section 8.4) et « Qualifier la cause du retard » sur un dépôt tardif (section 8.7).
+- Code couleur spécifique pour l'alerte « Paiement non constaté ».
 
 ### 7.3 Production des bilans
 
 - Vue en colonnes par étape (0 à 6). Chaque carte affiche le dossier, la clôture, la date cible, l'intervenant attendu et un indicateur de retard.
 - Vue tableau alternative avec les mêmes filtres que l'échéancier.
 - Action de validation de l'étape suivante, visible uniquement pour le rôle habilité ; action de retour pour les managers et l'associé.
+- **Onglet « Plan de charge »** : histogramme du nombre d'exercices dont la date cible tombe dans chaque semaine, sur les six mois à venir, ventilé par Senior. Une couleur distingue les exercices déjà supervisés de ceux qui restent à faire. Filtres par équipe, manager et Senior. Ce plan compte des dossiers, sans estimation d'heures ni de capacité. Un clic sur une barre ouvre la liste des dossiers concernés, depuis laquelle un manager peut ajuster les dates cibles.
 
 ### 7.4 Fiche dossier
 
@@ -223,11 +247,19 @@ Identité, intervenants, lien vers le dossier Pennylane (`https://app.pennylane.
 
 ### 7.5 Administration (Managers pour la consultation, administrateurs pour la modification)
 
-Collaborateurs et rôles, paramètres, journal de synchronisation, import initial du classeur.
+Collaborateurs, rôles et absences, paramètres, journal de synchronisation et des envois du récapitulatif, import initial du classeur.
 
 ### 7.6 Export
 
-Toute liste de l'échéancier et de la production est exportable au format Excel, selon les filtres appliqués.
+Toute liste de l'échéancier, de la production et des indicateurs est exportable au format Excel, selon les filtres appliqués.
+
+### 7.7 Indicateurs (Managers et Associé)
+
+Écran réservé aux managers et à l'associé, par exception à la visibilité ouverte, car il compare des performances par collaborateur.
+
+- Les quatre indicateurs de la section 8.7, filtrables par saison fiscale, équipe, manager et Senior.
+- Pour chacun : valeur de la saison en cours, comparaison avec la saison précédente lorsqu'elle existe, détail par équipe et par Senior, accès à la liste des dossiers concernés.
+- Lors de la première saison, la comparaison avec la saison précédente est indisponible et signalée comme telle.
 
 ## 8. Règles métier
 
@@ -275,6 +307,44 @@ Une tâche planifiée nocturne génère, pour chaque dossier actif, les échéan
 - **Retard** : un exercice est en retard dès que la date du jour dépasse le jalon de l'étape attendue sans que celle-ci soit validée.
 - **Échéance en retard** : statut `a_faire` et date limite dépassée.
 
+### 8.4 Alerte « TVA déposée mais non payée »
+
+- **Condition** : échéance de TVA au statut `depose` (Pennylane `accepted`), montant strictement positif, date limite dépassée de plus du délai paramétré (5 jours par défaut).
+- **Effet** : l'échéance est signalée « Paiement non constaté » dans l'échéancier, sur l'accueil des intervenants du dossier et dans le récapitulatif hebdomadaire.
+- **Levée automatique** : passage au statut Pennylane `accepted_and_paid`.
+- **Levée manuelle** : un intervenant du dossier ou un manager confirme le paiement (par exemple un règlement effectué hors Pennylane). L'échéance passe à `paye` avec `source_statut = manuel`. Une synchronisation ultérieure renvoyant `accepted` ne fait pas redescendre ce statut ; `accepted_and_paid` le reprend avec `source_statut = pennylane`.
+- Une déclaration au montant nul ou négatif (crédit de TVA) ne déclenche jamais l'alerte.
+
+### 8.5 Absences et suppléance
+
+- Chaque collaborateur peut déclarer sa période d'absence (dates de début et de fin) ; un manager ou un administrateur peut la saisir pour lui.
+- Pendant l'absence d'un **CSP**, ses dossiers sont attribués temporairement à son suppléant Pennylane, s'il est renseigné et présent ; à défaut, au Senior du dossier.
+- Pendant l'absence d'un **Senior**, ses dossiers sont attribués temporairement au Manager du dossier.
+- L'attribution temporaire fait apparaître les dossiers dans « Mes dossiers », l'accueil et le récapitulatif du remplaçant, avec la mention « en suppléance de » suivie du trigramme de l'absent. Elle donne au remplaçant, pour ces dossiers, les droits de l'absent (validation d'étape, saisie des échéances manuelles).
+- Les affectations Pennylane ne sont pas modifiées ; l'attribution temporaire prend fin automatiquement au lendemain de la date de fin d'absence.
+
+### 8.6 Récapitulatif hebdomadaire
+
+- **Envoi** : chaque lundi à 7 h 30 (heure de Paris), par e-mail, depuis une adresse d'envoi du cabinet via Microsoft Graph.
+- **Destinataires** : les collaborateurs actifs, non absents ce jour-là, des équipes paramétrées ; les managers et l'associé reçoivent la synthèse de leur portefeuille.
+- **Contenu pour un CSP ou un Senior** : échéances des 7 prochains jours, échéances en retard, alertes « Paiement non constaté », exercices en retard sur leur jalon, dossiers en suppléance. Chaque ligne renvoie vers la fiche du dossier.
+- **Contenu pour un Manager ou l'Associé** : synthèse du portefeuille par collaborateur (nombre d'échéances de la semaine, de retards et d'alertes), file de supervision, anomalies de synchronisation ouvertes.
+- Un collaborateur sans aucun élément reçoit un message court l'indiquant, ce qui confirme que le dispositif fonctionne.
+- Un administrateur peut suspendre l'envoi ou le limiter à certaines équipes (paramètre), notamment pendant le pilote. Il n'y a pas de désabonnement individuel en V1.
+
+### 8.7 Indicateurs de pilotage
+
+La **saison fiscale N** regroupe les exercices clôturés entre le 1er octobre N-1 et le 30 septembre N, et les échéances dont la date limite tombe dans cette même période.
+
+| Indicateur | Calcul | Remarque |
+|---|---|---|
+| **Dépôts en retard** | Nombre d'échéances dont la date de dépôt est postérieure à la date limite, par type | Ventilé par cause ; l'indicateur clé est le nombre de retards de cause `cabinet`. Un retard non qualifié est compté à part « non qualifié » et signalé au manager |
+| **Bilans supervisés avant la date cible** | Exercices dont l'étape 4 a été validée au plus tard à la date cible, rapportés aux exercices dont la date cible est échue | Exprimé en pourcentage |
+| **Marge avant l'échéance de la liasse** | Date limite de la liasse moins la date de passage automatique à l'étape 6 | Moyenne et répartition (en retard, moins de 7 jours, 7 à 30 jours, plus de 30 jours). Pennylane ne fournissant pas la date de télétransmission, la date de détection par la synchronisation nocturne sert d'approximation, à un jour près |
+| **Délai entre clôture et supervision** | Date de validation de l'étape 4 moins la date de fin d'exercice | Moyenne en jours, comparée à la saison précédente |
+
+La cause d'un retard est qualifiée par un intervenant du dossier ou un manager, depuis l'échéancier.
+
 ## 9. Synchronisation Pennylane
 
 ### 9.1 Principe
@@ -301,6 +371,7 @@ Pennylane fait foi pour l'identité des dossiers, les régimes, les intervenants
       "comptable": "Hamza AGUERCHAL",
       "superviseur": "Azer HORRIGUE",
       "manager": "Robin CAPPAROS",
+      "suppleant": null,
       "exercices": [{ "debut": "2026-01-01", "fin": "2026-12-31" }]
     }
   ],
@@ -360,7 +431,7 @@ Une déclaration de TVA est rattachée à l'échéance de même dossier et de m�
 ### 9.7 Rapprochements
 
 - **Dossiers** : à l'import initial, rapprochement par SIREN entre le classeur et Pennylane ; à défaut, par raison sociale avec validation manuelle dans l'écran d'administration. Ensuite, l'identifiant Pennylane fait foi.
-- **Collaborateurs** : par `nom_pennylane`. Un nom inconnu laisse l'affectation vide et génère une anomalie.
+- **Collaborateurs** : par `nom_pennylane`, y compris pour le suppléant. Un nom inconnu laisse l'affectation vide et génère une anomalie.
 
 ## 10. Import initial
 
@@ -386,12 +457,16 @@ Les valeurs incohérentes (« NON » avec espace, cellules en erreur) sont norma
 | Valider les étapes | Selon section 8.2 | Selon section 8.2 | Selon section 8.2 | Selon section 8.2 | Selon son rôle |
 | Revenir à une étape antérieure | Non | Non | Oui | Oui | Selon son rôle |
 | Marquer une échéance manuelle déposée ou non applicable | Dossiers où il est CSP | Dossiers où il est Senior | Oui | Oui | Selon son rôle |
+| Confirmer un paiement de TVA, qualifier la cause d'un retard | Dossiers où il est CSP | Dossiers où il est Senior | Oui | Oui | Selon son rôle |
+| Déclarer sa propre absence | Oui | Oui | Oui | Oui | Oui |
+| Déclarer l'absence d'un autre collaborateur | Non | Non | Oui | Oui | Oui |
+| Consulter l'écran Indicateurs | Non | Non | Oui | Oui | Oui |
 | Modifier équipe, mission, date cible, date d'approbation, jour d'échéance TVA, IS N-1 | Non | Non | Oui | Oui | Oui |
 | Consulter l'administration | Non | Non | Oui | Oui | Oui |
 | Modifier collaborateurs, rôles et paramètres, lancer l'import, consulter le journal détaillé | Non | Non | Non | Non | Oui |
 | Modifier un champ issu de Pennylane | Non | Non | Non | Non | Non |
 
-La colonne « Administrateur » s'ajoute aux droits du rôle : Robin CAPPAROS cumule les droits de Manager et d'administrateur.
+La colonne « Administrateur » s'ajoute aux droits du rôle : Robin CAPPAROS cumule les droits de Manager et d'administrateur. Pendant une suppléance (section 8.5), le remplaçant dispose sur les dossiers concernés des droits de l'absent.
 
 Ces droits sont appliqués par des règles de sécurité au niveau de la base de données (RLS), et non uniquement dans l'interface.
 
@@ -405,14 +480,17 @@ Ces droits sont appliqués par des règles de sécurité au niveau de la base de
 | Compte Microsoft 365 absent de `collaborateurs` ou inactif | Accès refusé, message invitant à contacter un administrateur |
 | Validation d'étape hors ordre ou par un rôle non habilité | Refusée par la base, message explicite |
 | Dossier Pennylane absent de l'outil | Créé automatiquement avec `equipe` et `mission` vides, anomalie signalée |
+| Échec d'envoi du récapitulatif à un destinataire | Consigné au journal ; les autres envois se poursuivent ; aucune relance automatique, l'échec est visible dans l'administration |
+| Absence sans remplaçant disponible (suppléant et Senior eux-mêmes absents) | Dossiers attribués au Manager du dossier |
 
 ## 13. Tests et recette
 
 1. **Règles de calcul** (tests automatisés) : clôtures au 31/12 et décalées, exercices courts et longs, présence ou absence de l'IS N-1 supérieur à 3 000 €, reports de jours non ouvrés, dossiers sortis.
 2. **Synchronisation** (tests automatisés) : idempotence, correspondance des statuts, création d'échéance manquante, passage automatique à l'étape 6, rejet sans clé.
-3. **Droits** (tests automatisés) : chaque ligne du tableau de la section 11 testée pour chaque rôle.
-4. **Recette métier** : comparaison sur 20 dossiers entre l'outil, Pennylane et le classeur.
-5. **Pilote** : un mois avec une équipe, en parallèle du classeur, avant le déploiement aux 22 collaborateurs.
+3. **Droits** (tests automatisés) : chaque ligne du tableau de la section 11 testée pour chaque rôle, y compris en situation de suppléance.
+4. **Nouvelles règles V1** (tests automatisés) : déclenchement et levée de l'alerte de paiement (montant positif, nul, négatif ; confirmation manuelle non écrasée par `accepted`) ; attribution temporaire pendant une absence et fin automatique ; contenu du récapitulatif par rôle ; calcul des quatre indicateurs sur un jeu de données de référence, y compris la bascule de saison au 1er octobre.
+5. **Recette métier** : comparaison sur 20 dossiers entre l'outil, Pennylane et le classeur.
+6. **Pilote** : un mois avec une équipe, récapitulatif hebdomadaire activé pour cette seule équipe, en parallèle du classeur, avant le déploiement aux 22 collaborateurs.
 
 ## 14. Prérequis à lever par le cabinet
 
@@ -422,6 +500,7 @@ Ces droits sont appliqués par des règles de sécurité au niveau de la base de
 | Liste des 22 collaborateurs avec rôle et adresse e-mail | Robin CAPPAROS | Mise en service |
 | Validation des règles de calcul et du calendrier annuel | Robin CAPPAROS ou un autre manager | Mise en service |
 | Abonnement Lovable permettant l'hébergement et la base de données | Robin CAPPAROS (droits administrateur) | Démarrage du développement |
+| Adresse d'envoi du récapitulatif (boîte partagée) et autorisation Microsoft Graph `Mail.Send` limitée à cette adresse | Robin CAPPAROS (droits administrateur) | Récapitulatif hebdomadaire |
 | Jeton API Pennylane cabinet | Robin CAPPAROS (droits administrateur) | Phase 2 uniquement |
 
 Robin CAPPAROS disposant des droits administrateur sur Microsoft 365, Lovable et Pennylane, aucun prérequis ne dépend d'un intervenant extérieur au projet.
