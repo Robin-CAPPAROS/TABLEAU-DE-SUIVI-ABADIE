@@ -30,3 +30,13 @@ export const LIBELLES_STATUT: Record<StatutEcheance, string> = {
   paye: 'Payé',
   non_applicable: 'Non applicable',
 };
+
+export const LIBELLES_ETAPE: Record<number, string> = {
+  0: 'Non commencé',
+  1: 'Pièces demandées',
+  2: 'Saisie terminée',
+  3: 'Révision terminée',
+  4: 'Supervision validée',
+  5: 'Comptes présentés au client',
+  6: 'Liasse télétransmise',
+};

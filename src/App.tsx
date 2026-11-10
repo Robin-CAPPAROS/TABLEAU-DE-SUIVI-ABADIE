@@ -7,6 +7,7 @@ import AccesRefuse from '@/pages/AccesRefuse';
 import PageAVenir from '@/pages/PageAVenir';
 import Accueil from '@/pages/Accueil';
 import Echeancier from '@/pages/Echeancier';
+import Production from '@/pages/Production';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } });
 
@@ -36,7 +37,7 @@ function Routage() {
       <Route element={<AppLayout />}>
         <Route index element={<Accueil />} />
         <Route path="echeancier" element={<Echeancier />} />
-        <Route path="production" element={<PageAVenir titre="Production des bilans" />} />
+        <Route path="production" element={<Production />} />
         <Route path="dossiers/:id" element={<PageAVenir titre="Fiche dossier" />} />
         <Route path="indicateurs" element={<PageAVenir titre="Indicateurs" />} />
         <Route path="administration" element={<PageAVenir titre="Administration" />} />
