@@ -71,7 +71,7 @@ reset role;
 insert into dossiers (id, pennylane_id, raison_sociale, statut) values
   ('00000000-0000-0000-0000-0000000000d9', 1009, 'Société Sortie', 'sorti');
 insert into calendriers_annuels values (2026, '2027-05-03', '2027-03-15', '2027-05-05');
-insert into formes_juridiques values ('SARL', true, true);
+insert into formes_juridiques values ('SARL', true, true) on conflict do nothing;
 set local role service_role;
 do $$
 declare d jsonb;
@@ -85,7 +85,7 @@ begin
   assert not exists (select 1 from jsonb_array_elements(d->'dossiers') x where x->>'id' like '%d9'), 'dossier sorti exclu';
   assert (d->'dossiers'->0->'isN1Superieur3000') = 'false'::jsonb, 'isN1Superieur3000 faux et non nul';
   assert (d->'parametres'->'calendriers'->0->>'dateCa12_3112') = '2027-05-05', 'cle dateCa12_3112';
-  assert (d->'parametres'->'formes'->0->>'depotGreffe') = 'true', 'cle depotGreffe';
+  assert exists (select 1 from jsonb_array_elements(d->'parametres'->'formes') f where f->>'code' = 'SARL' and f->>'depotGreffe' = 'true'), 'cle depotGreffe';
   assert (d->'parametres'->>'delaiGreffeMois')::int = 2, 'delai greffe';
 end $$;
 
