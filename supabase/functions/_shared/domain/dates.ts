@@ -1,4 +1,4 @@
-import type { ISODate } from './types';
+import type { ISODate } from './types.ts';
 
 // Arithmétique calendaire en UTC, sans dépendance : une date ISO YYYY-MM-DD
 // est lue et reconstruite sans passer par le fuseau local.

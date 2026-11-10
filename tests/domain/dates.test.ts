@@ -34,6 +34,10 @@ describe('ajouterMois', () => {
     expect(ajouterMois('2026-06-15', 1)).toBe('2026-07-15');
   });
 
+  it('plafonne un jour qui n\'est pas la fin du mois d\'origine (année bissextile)', () => {
+    expect(ajouterMois('2028-02-28', 1)).toBe('2028-03-28');
+  });
+
   it('franchit une frontière d\'année', () => {
     expect(ajouterMois('2026-11-15', 3)).toBe('2027-02-15');
     expect(ajouterMois('2026-12-31', 1)).toBe('2027-01-31');
