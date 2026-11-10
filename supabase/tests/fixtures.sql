@@ -23,4 +23,4 @@ insert into dossiers (id, pennylane_id, raison_sociale, forme_juridique, regime_
 insert into exercices (id, dossier_id, date_debut, date_fin, etape_actuelle) values
   ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000d1', '2026-01-01', '2026-12-31', 0);
 
-insert into parametres (id) values (1);
+insert into parametres (id) values (1) on conflict do nothing;

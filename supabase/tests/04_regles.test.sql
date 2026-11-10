@@ -60,13 +60,26 @@ begin
   assert not (select en_retard from v_exercices where id = '00000000-0000-0000-0000-0000000000e2'), 'etape 3 pas en retard';
 end $$;
 
+-- date cible explicite preservee ; mission revision avec parametre a 4 mois
+update dossiers set mission = 'revision' where id = '00000000-0000-0000-0000-0000000000d2';
+update parametres set date_cible_mois_revision = 4 where id = 1;
+insert into exercices (id, dossier_id, date_debut, date_fin, date_cible) values
+  ('00000000-0000-0000-0000-0000000000e3', '00000000-0000-0000-0000-0000000000d2', '2025-01-01', '2025-12-31', '2026-02-02');
+insert into exercices (id, dossier_id, date_debut, date_fin) values
+  ('00000000-0000-0000-0000-0000000000e4', '00000000-0000-0000-0000-0000000000d2', '2027-01-01', '2027-12-31');
+do $$
+begin
+  assert (select date_cible from exercices where id = '00000000-0000-0000-0000-0000000000e3') = date '2026-02-02', 'date cible explicite preservee';
+  assert (select date_cible from exercices where id = '00000000-0000-0000-0000-0000000000e4') = date '2028-04-30', 'mission revision : +4 mois';
+end $$;
+
 -- visibilite
 set local role authenticated;
 set local request.jwt.claims = '{"email":"sen1@cabinet.test"}';
 do $$
 begin
-  assert (select count(*) from v_echeances) >= 6, 'sen1 lit v_echeances';
-  assert (select count(*) from v_exercices) >= 2, 'sen1 lit v_exercices';
+  assert (select count(*) from v_echeances) = 6, 'sen1 lit v_echeances';
+  assert (select count(*) from v_exercices) = 4, 'sen1 lit v_exercices';
 end $$;
 set local request.jwt.claims = '{"email":"inconnu@cabinet.test"}';
 do $$
