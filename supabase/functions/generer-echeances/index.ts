@@ -78,7 +78,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       ajouter(r);
     }
 
-    await supabase
+    const { error: errFin } = await supabase
       .from('journal_synchro')
       .update({
         fin: new Date().toISOString(),
@@ -86,11 +86,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
         nb_echeances: echeances.length,
       })
       .eq('id', journal.id);
+    if (errFin) {
+      console.error('Journal non finalisé', errFin.message);
+      return reponse({ erreur: errFin.message }, 500);
+    }
 
     return reponse({ dossiers: donnees.dossiers.length, echeances: echeances.length, ...totaux });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    await supabase.from('journal_synchro').update({ fin: new Date().toISOString() }).eq('id', journal.id);
+    // fin reste nul : une ligne ouverte marque une exécution en échec.
+    const { error: errAnomalie } = await supabase.from('anomalies').insert({
+      type: 'echec_generation',
+      dossier_id: null,
+      cle: journal.id,
+      message,
+      journal_id: journal.id,
+    });
+    if (errAnomalie) console.error('Anomalie non enregistrée', errAnomalie.message);
     return reponse({ erreur: message }, 500);
   }
 });
