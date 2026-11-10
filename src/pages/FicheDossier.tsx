@@ -148,10 +148,10 @@ export default function FicheDossier() {
   const { moi } = useMoi();
   const fiche = useQuery({ queryKey: ['dossier', id], queryFn: () => lireDossier(id), enabled: !!id });
   const echeances = useQuery({ queryKey: ['echeances', 'dossier', id], queryFn: () => listerEcheancesDossier(id), enabled: !!id });
-  const { data: collaborateurs = [] } = useQuery({ queryKey: ['collaborateurs'], queryFn: listerCollaborateurs });
+  const { data: collaborateurs = [], isSuccess: collabsPrets } = useQuery({ queryKey: ['collaborateurs'], queryFn: listerCollaborateurs });
 
   if (!moi) return null;
-  const tri = (cid: string | null) => (cid ? collaborateurs.find((c) => c.id === cid)?.trigramme ?? '?' : 'Non affecté');
+  const tri = (cid: string | null) => (cid ? (collabsPrets ? collaborateurs.find((c) => c.id === cid)?.trigramme ?? '?' : '') : 'Non affecté');
   const d = fiche.data?.dossier;
   const exercices = fiche.data?.exercices ?? [];
   const enCours = exerciceEnCours(exercices);

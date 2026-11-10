@@ -1,4 +1,4 @@
-import { formaterDate, formaterDateLongue, formaterDateHeureParis, formaterNombre, formaterPourcentage, saisonFiscale } from './format';
+import { formaterDate, formaterDateLongue, formaterDateHeureParis, formaterNombre, formaterPourcentage, saisonFiscale, bornesSaison } from './format';
 
 test('formaterDate', () => {
   expect(formaterDate('2026-11-19')).toBe('19/11/2026');
@@ -24,4 +24,8 @@ test('saisonFiscale : année de la date plus trois mois', () => {
   expect(saisonFiscale('2026-10-01')).toBe(2027);
   expect(saisonFiscale('2026-11-10')).toBe(2027);
   expect(saisonFiscale('2027-01-15')).toBe(2027);
+});
+
+test('bornesSaison', () => {
+  expect(bornesSaison(2027)).toEqual({ du: '2026-10-01', au: '2027-09-30' });
 });

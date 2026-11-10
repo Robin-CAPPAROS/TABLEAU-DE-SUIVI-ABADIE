@@ -1,16 +1,16 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, vi } from 'vitest';
+import { afterEach, beforeEach, vi } from 'vitest';
 import Indicateurs from './Indicateurs';
 import { useMoi } from '@/auth/SessionProvider';
-import { listerCollaborateurs } from '@/data/echeances';
+import { listerCollaborateurs, listerEcheances } from '@/data/echeances';
 import { listerExercices } from '@/data/exercices';
 import { lireIndicateurs, type BlocIndicateurs, type Indicateurs as Donnees } from '@/data/pilotage';
-import { MOI_CSP, MOI_MANAGER } from '@/test/fixtures';
+import { echeance, MOI_CSP, MOI_MANAGER } from '@/test/fixtures';
 
 vi.mock('@/auth/SessionProvider', () => ({ useMoi: vi.fn() }));
-vi.mock('@/data/echeances', () => ({ listerCollaborateurs: vi.fn() }));
+vi.mock('@/data/echeances', () => ({ listerCollaborateurs: vi.fn(), listerEcheances: vi.fn() }));
 vi.mock('@/data/exercices', () => ({ listerExercices: vi.fn() }));
 vi.mock('@/data/pilotage', () => ({ lireIndicateurs: vi.fn() }));
 
@@ -51,6 +51,8 @@ beforeEach(() => {
   vi.mocked(listerExercices).mockResolvedValue([]);
 });
 
+afterEach(() => vi.useRealTimers());
+
 test('affiche les pourcentages français et la comparaison indisponible', async () => {
   vi.mocked(lireIndicateurs).mockResolvedValue(donnees(null));
   rendre();
@@ -73,4 +75,19 @@ test('un CSP est redirigé vers l\'accueil', async () => {
   rendre();
   expect(await screen.findByText('Accueil')).toBeInTheDocument();
   expect(lireIndicateurs).not.toHaveBeenCalled();
+});
+
+test('la carte des retards liste les dossiers concernés avec un lien', async () => {
+  vi.mocked(lireIndicateurs).mockResolvedValue(donnees(null));
+  vi.mocked(listerEcheances).mockResolvedValue([
+    echeance({ id: 'e1', dossier_id: 'd42', raison_sociale: 'Retardataire SARL', depot_tardif: true, date_depot: '2026-11-25' }),
+    echeance({ id: 'e2', dossier_id: 'd43', raison_sociale: 'Dans les temps', depot_tardif: false }),
+  ]);
+  rendre();
+  const carte = (await screen.findByRole('heading', { name: 'Dépôts en retard' })).closest('section')!;
+  expect(carte).toHaveTextContent('Administration : 0');
+  fireEvent.click(within(carte).getByRole('button', { name: 'Voir les dossiers concernés' }));
+  const lien = await screen.findByRole('link', { name: 'Retardataire SARL' });
+  expect(lien).toHaveAttribute('href', '/dossiers/d42');
+  expect(screen.queryByText('Dans les temps')).not.toBeInTheDocument();
 });

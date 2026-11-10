@@ -34,3 +34,8 @@ export function saisonFiscale(iso: string): number {
   const [a, m] = iso.split('-').map(Number);
   return m >= 10 ? a + 1 : a;
 }
+
+/** Bornes d'une saison fiscale : du 1er octobre N-1 au 30 septembre N. */
+export function bornesSaison(saison: number): { du: string; au: string } {
+  return { du: `${saison - 1}-10-01`, au: `${saison}-09-30` };
+}
