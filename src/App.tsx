@@ -4,7 +4,7 @@ import { SessionProvider, useMoi, useSession } from '@/auth/SessionProvider';
 import AppLayout from '@/components/AppLayout';
 import Connexion from '@/pages/Connexion';
 import AccesRefuse from '@/pages/AccesRefuse';
-import PageAVenir from '@/pages/PageAVenir';
+import Administration from '@/pages/Administration';
 import Accueil from '@/pages/Accueil';
 import Echeancier from '@/pages/Echeancier';
 import Production from '@/pages/Production';
@@ -42,7 +42,7 @@ function Routage() {
         <Route path="production" element={<Production />} />
         <Route path="dossiers/:id" element={<FicheDossier />} />
         <Route path="indicateurs" element={<Indicateurs />} />
-        <Route path="administration" element={<PageAVenir titre="Administration" />} />
+        <Route path="administration" element={<Administration />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
