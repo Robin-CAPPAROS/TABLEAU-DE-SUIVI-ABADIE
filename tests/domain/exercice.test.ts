@@ -44,6 +44,12 @@ describe('genererEcheancesExercice', () => {
       { liasse: '2026-10-15', is_solde: '2026-10-15', approbation: '2026-12-31', depot_greffe: '2027-03-01' });
   });
 
+  it('dépôt au greffe : base non reportée (limite d approbation un samedi)', () => {
+    const r = gen(dossierIS, { id: 'e', dateDebut: '2026-02-01', dateFin: '2027-01-31', dateApprobation: null });
+    expect(r.echeances.find((e) => e.type === 'approbation')!.dateLimite).toBe('2027-08-02');
+    expect(r.echeances.find((e) => e.type === 'depot_greffe')!.dateLimite).toBe('2027-09-30');
+  });
+
   it('calendrier absent', () => {
     const r = gen(dossierIS, ex2026, { ...params, calendriers: [] });
     expect(types(r)).not.toContain('liasse');

@@ -5,6 +5,7 @@ import type {
 import {
   ajouterJours, ajouterMois, calendrierPertinent, estDansFenetre, finDeMois, reporterJourOuvre,
 } from './dates.ts';
+import { trierEcheances } from './exercice.ts';
 
 const deuxChiffres = (n: number) => String(n).padStart(2, '0');
 
@@ -98,8 +99,5 @@ export function genererTva(
     }
   }
 
-  echeances.sort((a, b) =>
-    a.dateLimite < b.dateLimite ? -1 : a.dateLimite > b.dateLimite ? 1
-      : a.type < b.type ? -1 : a.type > b.type ? 1 : 0);
-  return { echeances, anomalies };
+  return { echeances: trierEcheances(echeances), anomalies };
 }

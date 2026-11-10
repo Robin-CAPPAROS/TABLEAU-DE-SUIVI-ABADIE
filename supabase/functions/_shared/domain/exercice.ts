@@ -10,7 +10,7 @@ import { codeForme, estIS } from './formes.ts';
 const MOIS_ACOMPTES = ['03', '06', '09', '12'];
 
 export function trierEcheances(echeances: EcheanceGeneree[]): EcheanceGeneree[] {
-  return echeances.sort((a, b) =>
+  return [...echeances].sort((a, b) =>
     a.dateLimite < b.dateLimite ? -1 : a.dateLimite > b.dateLimite ? 1
       : a.type < b.type ? -1 : a.type > b.type ? 1 : 0);
 }
@@ -99,7 +99,7 @@ export function genererEcheancesExercice(
   } else {
     if (forme.approbation) ajouter('approbation', ajouterMois(e.dateFin, 6));
     if (forme.depotGreffe) {
-      const base = e.dateApprobation ?? reporterJourOuvre(ajouterMois(e.dateFin, 6), p.feries);
+      const base = e.dateApprobation ?? ajouterMois(e.dateFin, 6);
       ajouter('depot_greffe', ajouterMois(base, p.delaiGreffeMois));
     }
   }
