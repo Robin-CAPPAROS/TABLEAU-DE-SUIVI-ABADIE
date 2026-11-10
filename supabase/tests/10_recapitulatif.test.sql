@@ -52,6 +52,20 @@ begin
   assert 'ass1@cabinet.test' = any (emails), 'associe toujours inclus';
 end $$;
 
+-- un dossier sorti ne qualifie pas un CSP : csp2 n'a que D2 en equipe 1
+reset role;
+update parametres set recap_equipes = '{1,2,3}' where id = 1;
+update dossiers set statut = 'sorti' where id = '00000000-0000-0000-0000-0000000000d2';
+set local role service_role;
+do $$
+begin
+  assert not exists (select 1 from destinataires_recapitulatif() where email = 'csp2@cabinet.test'), 'csp2 sans dossier actif';
+end $$;
+reset role;
+update dossiers set statut = 'actif' where id = '00000000-0000-0000-0000-0000000000d2';
+update parametres set recap_equipes = '{2}' where id = 1;
+set local role service_role;
+
 -- recap_actif faux : aucun destinataire
 reset role;
 update parametres set recap_actif = false, recap_equipes = '{1,2,3}' where id = 1;
@@ -82,19 +96,32 @@ begin
     and r->'anomaliesOuvertes' = 'null'::jsonb, 'pas de supervision pour un CSP';
 end $$;
 
+-- dossier sans CSP (D3 : csp null, Senior sen1) avec une echeance a 7 jours
+reset role;
+insert into dossiers (id, pennylane_id, raison_sociale, forme_juridique, regime_tva, categorie_fiscale,
+                      csp_id, senior_id, manager_id, equipe, mission, jour_echeance_tva) values
+  ('00000000-0000-0000-0000-0000000000d3', 1003, 'Société Test Trois', 'SARL', 'mensuel', 'bic_is',
+   null, '00000000-0000-0000-0000-000000000051', '00000000-0000-0000-0000-000000000041', 1, 'tenue', 19);
+insert into echeances (dossier_id, type, periode_debut, periode_fin, date_limite) values
+  ('00000000-0000-0000-0000-0000000000d3', 'tva_mensuelle', '2026-10-01', '2026-10-31', '2026-11-14');
+set local role service_role;
+
 -- donnees manager et associe
 do $$
 declare r jsonb;
 begin
   r := donnees_recapitulatif('00000000-0000-0000-0000-000000000041');
-  assert jsonb_array_length(r->'echeances7j') = 2, 'manager voit D1 et D2';
-  assert jsonb_typeof(r->'synthese') = 'array' and jsonb_array_length(r->'synthese') = 2, 'synthese par collaborateur';
-  assert r #>> '{synthese,0,trigramme}' = 'CDU' and (r #>> '{synthese,0,echeances}')::int = 1
-    and (r #>> '{synthese,0,retards}')::int = 1, 'synthese CDU';
+  assert jsonb_array_length(r->'echeances7j') = 3, 'manager voit D1, D2 et D3';
+  assert jsonb_typeof(r->'synthese') = 'array' and jsonb_array_length(r->'synthese') = 4, 'CSP, Senior et non affecte';
+  assert (select (x->>'echeances')::int from jsonb_array_elements(r->'synthese') x where x->>'trigramme' = 'CDU') = 1
+    and (select (x->>'retards')::int from jsonb_array_elements(r->'synthese') x where x->>'trigramme' = 'CDU') = 1, 'synthese CDU';
+  assert (select (x->>'echeances')::int from jsonb_array_elements(r->'synthese') x where x->>'trigramme' = 'SLA') = 3, 'sen1 compte tous ses dossiers';
+  assert (select (x->>'echeances')::int from jsonb_array_elements(r->'synthese') x where x->>'trigramme' = 'Non affecté') = 1, 'non affecte';
+  assert r #>> '{synthese,3,trigramme}' = 'Non affecté', 'non affecte en dernier';
   assert jsonb_typeof(r->'fileSupervision') = 'array', 'file de supervision';
   assert (r->>'anomaliesOuvertes')::int = 1, 'anomalies ouvertes';
   r := donnees_recapitulatif('00000000-0000-0000-0000-0000000000a1');
-  assert jsonb_array_length(r->'echeances7j') = 2, 'associe voit tout';
+  assert jsonb_array_length(r->'echeances7j') = 3, 'associe voit tout';
 end $$;
 
 rollback;

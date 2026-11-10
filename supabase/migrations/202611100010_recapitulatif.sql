@@ -16,6 +16,7 @@ as $$
         and exists (
           select 1 from dossiers d
           where (d.csp_id = c.id or d.senior_id = c.id)
+            and d.statut = 'actif'
             and d.equipe = any (p.recap_equipes)
         )
       )
@@ -51,19 +52,30 @@ begin
     end;
 
   if v_supervision then
+    -- Un dossier compte pour son CSP et pour son Senior ; sans CSP, il va dans 'Non affecté'.
     select coalesce(jsonb_agg(jsonb_build_object(
              'trigramme', q.trigramme, 'echeances', q.echeances, 'retards', q.retards, 'alertes', q.alertes)
-           order by q.trigramme), '[]'::jsonb)
+           order by q.non_affecte, q.trigramme), '[]'::jsonb)
       into v_synthese
     from (
-      select c.trigramme,
+      select r.trigramme, r.non_affecte,
              count(*) filter (where e.sous_7_jours) as echeances,
              count(*) filter (where e.en_retard) as retards,
              count(*) filter (where e.alerte_paiement) as alertes
-      from v_echeances e
-      join collaborateurs c on c.id = e.csp_id
-      where e.dossier_id = any (v_dossiers)
-      group by c.trigramme
+      from (
+        select d.id as dossier_id, c.trigramme, false as non_affecte
+        from dossiers d
+        join collaborateurs c on c.id = d.csp_id or c.id = d.senior_id
+        where d.id = any (v_dossiers)
+        union all
+        select d.id, 'Non affecté', true
+        from dossiers d
+        where d.id = any (v_dossiers) and d.csp_id is null
+      ) r
+      left join v_echeances e on e.dossier_id = r.dossier_id
+      group by r.trigramme, r.non_affecte
+      having not r.non_affecte
+          or count(*) filter (where e.sous_7_jours or e.en_retard or e.alerte_paiement) > 0
     ) q;
 
     select coalesce(jsonb_agg(jsonb_build_object(

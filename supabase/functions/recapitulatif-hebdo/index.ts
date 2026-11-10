@@ -44,6 +44,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   if (!doitEnvoyer(maintenant, dejaEnvoye)) return reponse({ envoye: false });
 
+  // Aucun destinataire (envoi suspendu ou équipes sans dossier) : rien à faire, ni journal ni anomalie.
+  const { data: destinataires, error: errDest } = await supabase.rpc('destinataires_recapitulatif');
+  if (errDest) return reponse({ erreur: errDest.message }, 500);
+  const liste = (destinataires ?? []) as { id: string; email: string }[];
+  if (liste.length === 0) return reponse({ envoye: false, destinataires: 0 });
+
   const { data: journal, error: errJournal } = await supabase
     .from('journal_synchro')
     .insert({ source: 'outil', nature: 'recapitulatif' })
@@ -80,13 +86,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const client = Deno.env.get('MS_CLIENT_ID') ?? '';
     const secretClient = Deno.env.get('MS_CLIENT_SECRET') ?? '';
     const urlApplication = Deno.env.get('APP_URL') ?? '';
+    if (!urlApplication) throw new Error('APP_URL non configuré');
     if (!tenant || !client || !secretClient) throw new Error('Identifiants Microsoft Graph non configurés');
 
-    const { data: destinataires, error: errDest } = await supabase.rpc('destinataires_recapitulatif');
-    if (errDest) throw new Error(errDest.message);
-    const liste = (destinataires ?? []) as { id: string; email: string }[];
-
-    const jeton = liste.length > 0 ? await obtenirJetonGraph(tenant, client, secretClient) : '';
+    const jeton = await obtenirJetonGraph(tenant, client, secretClient);
 
     let envoyes = 0;
     let echecs = 0;
