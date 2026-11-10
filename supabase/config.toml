@@ -4,3 +4,15 @@ project_id = "tableau-suivi-echeances"
 [db]
 port = 54322
 major_version = 15
+
+[functions.generer-echeances]
+verify_jwt = false
+
+[functions.sync-pennylane]
+verify_jwt = false
+
+[functions.dossiers-a-verifier]
+verify_jwt = false
+
+[functions.recapitulatif-hebdo]
+verify_jwt = false
