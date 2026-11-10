@@ -98,3 +98,27 @@ test('bascule vers le calendrier mensuel', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Calendrier' }));
   expect(screen.getByRole('grid')).toBeInTheDocument();
 });
+
+test('un CSP non intervenant du dossier ne voit aucune action', async () => {
+  vi.mocked(listerEcheances).mockResolvedValue([echeance({ csp_id: 'autre', senior_id: 'autre2' })]);
+  rendre();
+  expect(await screen.findByText('Société Fictive')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Marquer déposé' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Non applicable' })).not.toBeInTheDocument();
+});
+
+test('un acompte CA12 sans source Pennylane propose Marquer déposé', async () => {
+  vi.mocked(listerEcheances).mockResolvedValue([echeance({ type: 'tva_ca12_acompte_juillet' })]);
+  rendre();
+  expect(await screen.findByRole('button', { name: 'Marquer déposé' })).toBeInTheDocument();
+});
+
+test('un montant invalide affiche un message sans appeler la fonction', async () => {
+  vi.mocked(listerEcheances).mockResolvedValue([echeance({ id: 'e9' })]);
+  rendre();
+  fireEvent.click(await screen.findByRole('button', { name: 'Marquer déposé' }));
+  fireEvent.change(screen.getByLabelText('Montant (facultatif)'), { target: { value: 'abc' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le dépôt' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Montant invalide');
+  expect(marquerEcheance).not.toHaveBeenCalled();
+});

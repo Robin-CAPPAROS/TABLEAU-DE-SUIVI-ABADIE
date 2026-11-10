@@ -74,3 +74,12 @@ test('un manager voit la supervision, les retards par collaborateur et les anoma
   expect(screen.getByText('Retards non qualifiés')).toBeInTheDocument();
   expect(await screen.findByText('Echo')).toBeInTheDocument();
 });
+
+test('une requête en échec affiche une erreur et non Rien à signaler', async () => {
+  vi.mocked(useMoi).mockReturnValue({ moi: MOI_MANAGER, chargement: false });
+  vi.mocked(listerAnomaliesOuvertes).mockRejectedValue(new Error('Accès refusé aux anomalies'));
+  rendre();
+  expect(await screen.findByText('Accès refusé aux anomalies')).toBeInTheDocument();
+  const bloc = screen.getByText('Anomalies de synchronisation').closest('section') as HTMLElement;
+  expect(bloc).not.toHaveTextContent('Rien à signaler.');
+});

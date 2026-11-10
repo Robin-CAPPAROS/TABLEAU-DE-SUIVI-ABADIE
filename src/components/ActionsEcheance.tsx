@@ -14,6 +14,7 @@ export default function ActionsEcheance({ echeance: e, moi }: { echeance: LigneE
   const [saisie, setSaisie] = useState(false);
   const [date, setDate] = useState(() => dateDuJourParis(new Date()));
   const [montant, setMontant] = useState('');
+  const [erreurMontant, setErreurMontant] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: (action: () => Promise<void>) => action(),
@@ -31,7 +32,13 @@ export default function ActionsEcheance({ echeance: e, moi }: { echeance: LigneE
 
   const manuelle = !e.synchronisee;
   const enregistrer = () => {
-    const m = montant.trim() === '' ? undefined : Number(montant.replace(',', '.'));
+    const brut = montant.trim().replace(',', '.');
+    const m = brut === '' ? undefined : Number(brut);
+    if (m !== undefined && !Number.isFinite(m)) {
+      setErreurMontant('Montant invalide : saisissez un nombre.');
+      return;
+    }
+    setErreurMontant(null);
     mutation.mutate(() => marquerEcheance(e.id, 'depose', date, m));
   };
 
@@ -91,6 +98,7 @@ export default function ActionsEcheance({ echeance: e, moi }: { echeance: LigneE
             Montant (facultatif)
             <input type="text" inputMode="decimal" value={montant} onChange={(ev) => setMontant(ev.target.value)} className="w-28 rounded border border-gris px-1 py-1" />
           </label>
+          {erreurMontant && <p role="alert" className="w-full text-xs text-red-600">{erreurMontant}</p>}
           <button type="submit" className="rounded bg-primaire px-2 py-1 text-xs font-bold text-white" disabled={mutation.isPending}>
             Enregistrer le dépôt
           </button>

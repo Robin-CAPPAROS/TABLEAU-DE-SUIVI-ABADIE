@@ -12,11 +12,24 @@ import { StatutEcheanceBadge } from '@/components/StatutBadge';
 import { formaterDate } from '@/lib/format';
 import { LIBELLES_TYPE } from '@/lib/libelles';
 
-function Bloc({ titre, children, vide }: { titre: string; children?: ReactNode; vide?: boolean }) {
+type Requete = { isLoading: boolean; error: unknown };
+
+/** Bloc de l'accueil : gère les états chargement, erreur et vide autour du contenu. */
+function Bloc({ titre, requetes = [], children, vide }: { titre: string; requetes?: Requete[]; children?: ReactNode; vide?: boolean }) {
+  const erreur = requetes.find((r) => r.error)?.error;
+  const chargement = requetes.some((r) => r.isLoading);
+  let corps: ReactNode = children;
+  if (erreur) {
+    corps = <p role="alert" className="text-sm text-red-600">{erreur instanceof Error ? erreur.message : 'Chargement impossible.'}</p>;
+  } else if (chargement) {
+    corps = <p className="text-sm text-gris">Chargement…</p>;
+  } else if (vide) {
+    corps = <p className="text-sm text-gris">Rien à signaler.</p>;
+  }
   return (
     <section className="rounded border border-gris/60 bg-white p-4">
       <h3 className="mb-2 text-base font-bold text-marine">{titre}</h3>
-      {vide ? <p className="text-sm text-gris">Rien à signaler.</p> : children}
+      {corps}
     </section>
   );
 }
@@ -111,13 +124,12 @@ export default function Accueil() {
   return (
     <div className="space-y-4 font-cabinet">
       <h2 className="text-xl font-bold text-marine">Bonjour {moi.prenom}</h2>
-      {(perso.error || bilans.error) && <p role="alert" className="text-sm text-red-600">Chargement impossible.</p>}
       <div className="grid gap-4 md:grid-cols-2">
-        <Bloc titre="Mes échéances à 7 jours" vide={a7.length === 0}><ListeEcheances lignes={a7} /></Bloc>
-        <Bloc titre="À 30 jours" vide={a30.length === 0}><ListeEcheances lignes={a30} /></Bloc>
-        <Bloc titre="En retard" vide={enRetard.length === 0}><ListeEcheances lignes={enRetard} /></Bloc>
-        <Bloc titre="Paiements de TVA non constatés" vide={paiements.length === 0}><ListeEcheances lignes={paiements} /></Bloc>
-        <Bloc titre="Mes bilans par étape">
+        <Bloc titre="Mes échéances à 7 jours" requetes={[perso]} vide={a7.length === 0}><ListeEcheances lignes={a7} /></Bloc>
+        <Bloc titre="À 30 jours" requetes={[perso]} vide={a30.length === 0}><ListeEcheances lignes={a30} /></Bloc>
+        <Bloc titre="En retard" requetes={[perso]} vide={enRetard.length === 0}><ListeEcheances lignes={enRetard} /></Bloc>
+        <Bloc titre="Paiements de TVA non constatés" requetes={[perso]} vide={paiements.length === 0}><ListeEcheances lignes={paiements} /></Bloc>
+        <Bloc titre="Mes bilans par étape" requetes={[bilans]}>
           <ul className="flex flex-wrap gap-2 text-sm">
             {parEtape.map((p) => (
               <li key={p.n} className="rounded bg-gris/30 px-2 py-1 text-marine">
@@ -126,23 +138,23 @@ export default function Accueil() {
             ))}
           </ul>
         </Bloc>
-        <Bloc titre="Bilans en retard" vide={bilansEnRetard.length === 0}><ListeExercices lignes={bilansEnRetard} /></Bloc>
+        <Bloc titre="Bilans en retard" requetes={[bilans]} vide={bilansEnRetard.length === 0}><ListeExercices lignes={bilansEnRetard} /></Bloc>
         {supervise && (
           <>
-            <Bloc titre="Retards par collaborateur" vide={parCollaborateur.length === 0}>
+            <Bloc titre="Retards par collaborateur" requetes={[attention, collaborateurs]} vide={parCollaborateur.length === 0}>
               <ul className="space-y-1 text-sm">
                 {parCollaborateur.map((c) => (
                   <li key={c.id} className="flex gap-2"><span className="font-bold">{c.tri}</span><span>{c.nb} en retard</span></li>
                 ))}
               </ul>
             </Bloc>
-            <Bloc titre="File de supervision" vide={aSuperviser.length === 0}><ListeExercices lignes={aSuperviser} /></Bloc>
-            <Bloc titre="Anomalies de synchronisation" vide={(anomalies.data ?? []).length === 0}>
+            <Bloc titre="File de supervision" requetes={[file]} vide={aSuperviser.length === 0}><ListeExercices lignes={aSuperviser} /></Bloc>
+            <Bloc titre="Anomalies de synchronisation" requetes={[anomalies]} vide={(anomalies.data ?? []).length === 0}>
               <ul className="space-y-1 text-sm">
                 {(anomalies.data ?? []).map((a) => <li key={a.id}>{a.message}</li>)}
               </ul>
             </Bloc>
-            <Bloc titre="Retards non qualifiés" vide={nonQualifies.length === 0}><ListeEcheances lignes={nonQualifies} /></Bloc>
+            <Bloc titre="Retards non qualifiés" requetes={[attention]} vide={nonQualifies.length === 0}><ListeEcheances lignes={nonQualifies} /></Bloc>
           </>
         )}
       </div>
