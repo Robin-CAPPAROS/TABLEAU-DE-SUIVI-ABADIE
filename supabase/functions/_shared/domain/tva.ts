@@ -3,7 +3,7 @@ import type {
   ParametresFiscaux, ResultatGeneration, TypeEcheance,
 } from './types.ts';
 import {
-  ajouterJours, ajouterMois, estDansFenetre, finDeMois, reporterJourOuvre,
+  ajouterJours, ajouterMois, calendrierPertinent, estDansFenetre, finDeMois, reporterJourOuvre,
 } from './dates.ts';
 
 const deuxChiffres = (n: number) => String(n).padStart(2, '0');
@@ -46,8 +46,9 @@ export function genererTva(
   // Plage de mois candidats, large pour couvrir la fenêtre quel que soit le décalage de limite.
   const debut = ajouterMois(ajouterJours(aujourdhui, -60), -3);
   const fin = ajouterMois(aujourdhui, horizonMois);
-  const premier = Number(debut.slice(0, 4)) * 12 + Number(debut.slice(5, 7)) - 1;
-  const dernier = Number(fin.slice(0, 4)) * 12 + Number(fin.slice(5, 7)) - 1;
+  const indexMois = (d: ISODate) => Number(d.slice(0, 4)) * 12 + Number(d.slice(5, 7)) - 1;
+  const premier = indexMois(debut);
+  const dernier = indexMois(fin);
 
   const jour = d.jourEcheanceTva;
   if (jour === null) {
@@ -82,7 +83,7 @@ export function genererTva(
         const annee = Number(ex.dateFin.slice(0, 4)) + 1;
         const calendrier = p.calendriers.find((c) => c.annee === annee);
         if (calendrier === undefined) {
-          anomalies.push({
+          if (calendrierPertinent(annee, aujourdhui, horizonMois)) anomalies.push({
             dossierId: d.id, type: 'calendrier_absent', cle: String(annee),
             message: `Calendrier fiscal ${annee} absent : CA12 de l'exercice clos le ${ex.dateFin} non générée.`,
           });

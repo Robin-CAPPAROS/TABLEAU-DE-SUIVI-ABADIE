@@ -65,3 +65,11 @@ export function dateDuJourParis(maintenant: Date): ISODate {
 export function estDansFenetre(d: ISODate, aujourdhui: ISODate, horizonMois: number): boolean {
   return d >= ajouterJours(aujourdhui, -60) && d <= ajouterMois(aujourdhui, horizonMois);
 }
+
+// Vrai si les échéances fixées par le calendrier annuel (janvier à juillet de `annee`,
+// pour les clôtures au 31/12) peuvent tomber dans la fenêtre de génération.
+export function calendrierPertinent(annee: number, aujourdhui: ISODate, horizonMois: number): boolean {
+  const debutFenetre = ajouterJours(aujourdhui, -60);
+  const finFenetre = ajouterMois(aujourdhui, horizonMois);
+  return `${annee}-01-01` <= finFenetre && `${annee}-07-31` >= debutFenetre;
+}

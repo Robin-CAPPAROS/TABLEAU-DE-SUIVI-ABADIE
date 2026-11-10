@@ -6,6 +6,7 @@ import {
   reporterJourOuvre,
   dateDuJourParis,
   estDansFenetre,
+  calendrierPertinent,
 } from '@domain/dates';
 
 describe('ajouterJours', () => {
@@ -86,5 +87,17 @@ describe('estDansFenetre', () => {
   it('borne haute incluse : aujourd\'hui plus horizonMois', () => {
     expect(estDansFenetre('2028-02-10', '2026-11-10', 15)).toBe(true);
     expect(estDansFenetre('2028-02-11', '2026-11-10', 15)).toBe(false);
+  });
+});
+
+describe('calendrierPertinent', () => {
+  it('fenêtre du 2026-11-10 sur 15 mois', () => {
+    expect(calendrierPertinent(2026, '2026-11-10', 15)).toBe(false);
+    expect(calendrierPertinent(2027, '2026-11-10', 15)).toBe(true);
+    expect(calendrierPertinent(2028, '2026-11-10', 15)).toBe(true);
+    expect(calendrierPertinent(2029, '2026-11-10', 15)).toBe(false);
+  });
+  it('2026 pertinent le 2026-08-01', () => {
+    expect(calendrierPertinent(2026, '2026-08-01', 15)).toBe(true);
   });
 });

@@ -70,6 +70,15 @@ describe('genererTva', () => {
     ]);
   });
 
+  it('annuel : pas d anomalie de calendrier pour les exercices passés', () => {
+    const exercices = [2023, 2024, 2025, 2026].map((a) => ({
+      id: `e${a}`, dateDebut: `${a}-01-01`, dateFin: `${a}-12-31`, dateApprobation: null,
+    }));
+    const r = genererTva({ ...base, regimeTva: 'annuel', jourEcheanceTva: 24 }, exercices, { ...params, calendriers: [] }, '2026-11-10', 15);
+    expect(r.anomalies).toHaveLength(1);
+    expect(r.anomalies[0]).toMatchObject({ type: 'calendrier_absent', cle: '2027' });
+  });
+
   it('non assujetti et null', () => {
     expect(genererTva({ ...base, regimeTva: 'non_assujetti' }, [], params, '2026-11-10', 15).echeances).toEqual([]);
     expect(genererTva({ ...base, regimeTva: null }, [], params, '2026-11-10', 15)).toEqual({ echeances: [], anomalies: [] });
