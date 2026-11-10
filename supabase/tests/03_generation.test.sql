@@ -3,7 +3,7 @@ begin;
 
 -- appel par csp1 refuse
 set local role authenticated;
-set local request.jwt.claims = '{"email":"csp1@cabinet.test"}';
+set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 declare ok boolean := false;
 begin

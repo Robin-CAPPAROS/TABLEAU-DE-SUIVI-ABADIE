@@ -75,13 +75,13 @@ end $$;
 
 -- visibilite
 set local role authenticated;
-set local request.jwt.claims = '{"email":"sen1@cabinet.test"}';
+set local request.jwt.claims = '{"email":"sen1@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 begin
   assert (select count(*) from v_echeances) = 6, 'sen1 lit v_echeances';
   assert (select count(*) from v_exercices) = 4, 'sen1 lit v_exercices';
 end $$;
-set local request.jwt.claims = '{"email":"inconnu@cabinet.test"}';
+set local request.jwt.claims = '{"email":"inconnu@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 begin
   assert (select count(*) from v_echeances) = 0, 'inconnu ne voit aucune echeance';

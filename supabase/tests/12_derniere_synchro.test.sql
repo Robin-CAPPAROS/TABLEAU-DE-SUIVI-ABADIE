@@ -17,7 +17,7 @@ insert into journal_synchro (debut, fin, nature) values
   ('2026-11-10 04:00+00', null, 'fiches');
 
 set local role authenticated;
-set local request.jwt.claims = '{"email":"csp1@cabinet.test"}';
+set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 begin
   assert derniere_synchro() = '2026-11-10 01:15+00', 'derniere_synchro : max(fin) fiches/declarations';

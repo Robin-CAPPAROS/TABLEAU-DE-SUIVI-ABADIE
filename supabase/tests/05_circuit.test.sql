@@ -14,7 +14,7 @@ grant execute on function code_erreur(text) to authenticated;
 set local role authenticated;
 
 -- csp1 valide 1 puis 2
-set local request.jwt.claims = '{"email":"csp1@cabinet.test"}';
+set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$ begin perform valider_etape('00000000-0000-0000-0000-0000000000e1', 1); end $$;
 do $$ begin perform valider_etape('00000000-0000-0000-0000-0000000000e1', 2, 'RAS'); end $$;
 do $$
@@ -24,7 +24,7 @@ begin
 end $$;
 
 -- sen1 tente 4 depuis 2 : refus de role
-set local request.jwt.claims = '{"email":"sen1@cabinet.test"}';
+set local request.jwt.claims = '{"email":"sen1@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 begin
   assert code_erreur($q$select valider_etape('00000000-0000-0000-0000-0000000000e1', 4)$q$) = '42501', 'sen1 tente 4 depuis 2';
@@ -36,7 +36,7 @@ begin
 end $$;
 
 -- man1 : ordre et etape 6
-set local request.jwt.claims = '{"email":"man1@cabinet.test"}';
+set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 begin
   assert code_erreur($q$select valider_etape('00000000-0000-0000-0000-0000000000e1', 5)$q$) = 'P0001', 'man1 tente 5 depuis 3';
@@ -48,14 +48,14 @@ begin
 end $$;
 
 -- sen1 tente un retour
-set local request.jwt.claims = '{"email":"sen1@cabinet.test"}';
+set local request.jwt.claims = '{"email":"sen1@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 begin
   assert code_erreur($q$select revenir_etape('00000000-0000-0000-0000-0000000000e1', 2, 'x')$q$) = '42501', 'sen1 ne peut pas revenir';
 end $$;
 
 -- man1 revient a 2
-set local request.jwt.claims = '{"email":"man1@cabinet.test"}';
+set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 begin
   assert code_erreur($q$select revenir_etape('00000000-0000-0000-0000-0000000000e1', 2, null)$q$) = 'P0001', 'retour sans commentaire (null)';
@@ -90,7 +90,7 @@ begin
 end $$;
 
 -- inactif
-set local request.jwt.claims = '{"email":"inactif@cabinet.test"}';
+set local request.jwt.claims = '{"email":"inactif@cabinet.test","app_metadata":{"provider":"azure"}}';
 do $$
 begin
   assert code_erreur($q$select valider_etape('00000000-0000-0000-0000-0000000000e1', 3)$q$) = '42501', 'inactif refuse (valider)';
