@@ -69,6 +69,8 @@ Le modèle de données de la V1 est conçu pour accueillir ces évolutions sans 
 | Manager | 3 | Manager | Supervision, pilotage des retards, affectations |
 | Associé | 1 | Sans objet | Vision globale, administration |
 
+**Droit administrateur** : indépendant du rôle métier, il donne accès à la gestion des collaborateurs, des paramètres et à l'import. Il est attribué à **Robin CAPPAROS** (Manager) et à l'Associé. Un administrateur peut l'accorder à un autre collaborateur ; l'outil interdit de retirer ce droit au dernier administrateur actif.
+
 **Visibilité ouverte** : tout utilisateur consulte l'ensemble des dossiers ; le filtre « Mes dossiers » est actif par défaut. Les droits de modification dépendent du rôle (section 11).
 
 **Authentification** : Microsoft 365. Seuls les comptes du domaine du cabinet présents dans la table des collaborateurs accèdent à l'outil.
@@ -112,6 +114,7 @@ Les deux sources de synchronisation utilisent le même contrat d'entrée. Le pas
 | trigramme | texte, unique | Ex. « AHO » |
 | email | texte, unique | Adresse Microsoft 365 |
 | role | énuméré | `csp`, `senior`, `manager`, `associe` |
+| administrateur | booléen | Droit complémentaire au rôle (section 4) ; vrai pour Robin CAPPAROS et l'Associé à l'initialisation |
 | actif | booléen | Un collaborateur inactif ne peut plus se connecter |
 
 ### 6.2 `dossiers`
@@ -218,7 +221,7 @@ Charte graphique : #0E2A42 pour la navigation, #2784C6 pour les actions et infor
 
 Identité, intervenants, lien vers le dossier Pennylane (`https://app.pennylane.com/companies/{pennylane_id}`), exercice en cours et historique des étapes, échéances du dossier, commentaire.
 
-### 7.5 Administration (Managers pour la consultation, Associé pour la modification)
+### 7.5 Administration (Managers pour la consultation, administrateurs pour la modification)
 
 Collaborateurs et rôles, paramètres, journal de synchronisation, import initial du classeur.
 
@@ -371,22 +374,24 @@ Import ponctuel du classeur, exécuté depuis l'écran d'administration :
 | Date d'échéance | `dossiers.jour_echeance_tva` |
 | IS N-1>3000 € | `dossiers.is_n1_superieur_3000` |
 | Commentaire | `dossiers.commentaire` |
-| Onglet « Source listes » : Prénom Nom, Trigramme | `collaborateurs` (rôle attribué ensuite par l'associé) |
+| Onglet « Source listes » : Prénom Nom, Trigramme | `collaborateurs` (rôle attribué ensuite par un administrateur) |
 
 Les valeurs incohérentes (« NON » avec espace, cellules en erreur) sont normalisées ou signalées dans un rapport d'import.
 
 ## 11. Droits
 
-| Action | CSP | Senior FR | Manager | Associé |
-|---|---|---|---|---|
-| Consulter dossiers, échéances, avancement | Oui | Oui | Oui | Oui |
-| Valider les étapes | Selon section 8.2 | Selon section 8.2 | Selon section 8.2 | Selon section 8.2 |
-| Revenir à une étape antérieure | Non | Non | Oui | Oui |
-| Marquer une échéance manuelle déposée ou non applicable | Dossiers où il est CSP | Dossiers où il est Senior | Oui | Oui |
-| Modifier équipe, mission, date cible, date d'approbation, jour d'échéance TVA, IS N-1 | Non | Non | Oui | Oui |
-| Consulter l'administration | Non | Non | Oui | Oui |
-| Modifier collaborateurs et paramètres, lancer l'import | Non | Non | Non | Oui |
-| Modifier un champ issu de Pennylane | Non | Non | Non | Non |
+| Action | CSP | Senior FR | Manager | Associé | Administrateur |
+|---|---|---|---|---|---|
+| Consulter dossiers, échéances, avancement | Oui | Oui | Oui | Oui | Oui |
+| Valider les étapes | Selon section 8.2 | Selon section 8.2 | Selon section 8.2 | Selon section 8.2 | Selon son rôle |
+| Revenir à une étape antérieure | Non | Non | Oui | Oui | Selon son rôle |
+| Marquer une échéance manuelle déposée ou non applicable | Dossiers où il est CSP | Dossiers où il est Senior | Oui | Oui | Selon son rôle |
+| Modifier équipe, mission, date cible, date d'approbation, jour d'échéance TVA, IS N-1 | Non | Non | Oui | Oui | Oui |
+| Consulter l'administration | Non | Non | Oui | Oui | Oui |
+| Modifier collaborateurs, rôles et paramètres, lancer l'import, consulter le journal détaillé | Non | Non | Non | Non | Oui |
+| Modifier un champ issu de Pennylane | Non | Non | Non | Non | Non |
+
+La colonne « Administrateur » s'ajoute aux droits du rôle : Robin CAPPAROS cumule les droits de Manager et d'administrateur.
 
 Ces droits sont appliqués par des règles de sécurité au niveau de la base de données (RLS), et non uniquement dans l'interface.
 
@@ -397,7 +402,7 @@ Ces droits sont appliqués par des règles de sécurité au niveau de la base de
 | Échec complet d'une synchronisation | Consigné au journal ; nouvelle tentative la nuit suivante ; bandeau d'alerte si la dernière synchronisation réussie date de plus de 48 heures |
 | Erreur sur un dossier | Consignée au journal ; les autres dossiers sont traités |
 | Appel à la porte d'entrée sans clé valide | Rejeté (401), consigné |
-| Compte Microsoft 365 absent de `collaborateurs` ou inactif | Accès refusé, message invitant à contacter l'associé |
+| Compte Microsoft 365 absent de `collaborateurs` ou inactif | Accès refusé, message invitant à contacter un administrateur |
 | Validation d'étape hors ordre ou par un rôle non habilité | Refusée par la base, message explicite |
 | Dossier Pennylane absent de l'outil | Créé automatiquement avec `equipe` et `mission` vides, anomalie signalée |
 
@@ -413,8 +418,10 @@ Ces droits sont appliqués par des règles de sécurité au niveau de la base de
 
 | Prérequis | Responsable | Bloquant pour |
 |---|---|---|
-| Enregistrement de l'application dans Microsoft Entra ID (identifiants pour la connexion Microsoft 365) | Administrateur Microsoft 365 du cabinet | Mise en service |
-| Liste des 22 collaborateurs avec rôle et adresse e-mail | Associé | Mise en service |
-| Validation des règles de calcul et du calendrier annuel | Un manager | Mise en service |
-| Abonnement Lovable permettant l'hébergement et la base de données | Cabinet | Démarrage du développement |
-| Jeton API Pennylane cabinet | Administrateur Pennylane | Phase 2 uniquement |
+| Enregistrement de l'application dans Microsoft Entra ID (identifiants pour la connexion Microsoft 365) | Robin CAPPAROS (droits administrateur) | Mise en service |
+| Liste des 22 collaborateurs avec rôle et adresse e-mail | Robin CAPPAROS | Mise en service |
+| Validation des règles de calcul et du calendrier annuel | Robin CAPPAROS ou un autre manager | Mise en service |
+| Abonnement Lovable permettant l'hébergement et la base de données | Robin CAPPAROS (droits administrateur) | Démarrage du développement |
+| Jeton API Pennylane cabinet | Robin CAPPAROS (droits administrateur) | Phase 2 uniquement |
+
+Robin CAPPAROS disposant des droits administrateur sur Microsoft 365, Lovable et Pennylane, aucun prérequis ne dépend d'un intervenant extérieur au projet.
