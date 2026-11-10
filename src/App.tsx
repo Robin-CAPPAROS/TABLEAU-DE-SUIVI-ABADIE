@@ -8,6 +8,8 @@ import PageAVenir from '@/pages/PageAVenir';
 import Accueil from '@/pages/Accueil';
 import Echeancier from '@/pages/Echeancier';
 import Production from '@/pages/Production';
+import FicheDossier from '@/pages/FicheDossier';
+import Indicateurs from '@/pages/Indicateurs';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false } } });
 
@@ -38,8 +40,8 @@ function Routage() {
         <Route index element={<Accueil />} />
         <Route path="echeancier" element={<Echeancier />} />
         <Route path="production" element={<Production />} />
-        <Route path="dossiers/:id" element={<PageAVenir titre="Fiche dossier" />} />
-        <Route path="indicateurs" element={<PageAVenir titre="Indicateurs" />} />
+        <Route path="dossiers/:id" element={<FicheDossier />} />
+        <Route path="indicateurs" element={<Indicateurs />} />
         <Route path="administration" element={<PageAVenir titre="Administration" />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
