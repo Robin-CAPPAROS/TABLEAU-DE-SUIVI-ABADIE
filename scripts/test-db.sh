@@ -25,7 +25,7 @@ nettoyer() {
 }
 trap nettoyer EXIT
 
-"${COMME_PG[@]}" "$PGBIN/initdb" -D "$DATA" -A trust -U postgres --no-sync >/dev/null
+"${COMME_PG[@]}" "$PGBIN/initdb" -D "$DATA" -E UTF8 --locale=C.UTF-8 -A trust -U postgres --no-sync >/dev/null
 "${COMME_PG[@]}" "$PGBIN/pg_ctl" -D "$DATA" -w -l "$TMP/pg.log" \
   -o "-p $PORT -k $SOCK -c listen_addresses='' -c fsync=off" start >/dev/null
 
@@ -45,6 +45,10 @@ done
 statut=0
 for t in "$RACINE"/supabase/tests/*.test.sql; do
   nom="$(basename "$t")"
+  if ! grep -q '^begin;' "$t"; then
+    echo "ECHEC $nom : aucune ligne 'begin;' (les fixtures ne peuvent pas etre injectees)" >&2
+    exit 1
+  fi
   # fixtures dans la transaction du test : on les injecte apres le begin.
   if awk 'BEGIN{d=0} /^begin;/ && !d {print; system("cat \"'"$RACINE"'/supabase/tests/fixtures.sql\""); d=1; next} {print}' "$t" \
       | psql_base -d app_test; then
