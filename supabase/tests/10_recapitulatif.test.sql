@@ -2,6 +2,9 @@ begin;
 
 set local app.aujourdhui = '2026-11-10';
 
+-- la migration 14 met le recapitulatif en pause : ce test l'active explicitement
+update parametres set recap_actif = true where id = 1;
+
 insert into echeances (dossier_id, type, periode_debut, periode_fin, date_limite) values
   ('00000000-0000-0000-0000-0000000000d1', 'tva_mensuelle', '2026-10-01', '2026-10-31', '2026-11-12'),
   ('00000000-0000-0000-0000-0000000000d1', 'tva_mensuelle', '2026-09-01', '2026-09-30', '2026-10-19'),
