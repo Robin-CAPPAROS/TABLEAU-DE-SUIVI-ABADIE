@@ -6,7 +6,8 @@ import { beforeEach, vi } from 'vitest';
 import Echeancier from './Echeancier';
 import { useMoi } from '@/auth/SessionProvider';
 import { confirmerPaiement, listerCollaborateurs, listerEcheances, marquerEcheance } from '@/data/echeances';
-import { echeance, MOI_CSP } from '@/test/fixtures';
+import { ajouterJours, dateDuJourParis } from '@domain/dates';
+import { echeance, MOI_CSP, MOI_MANAGER } from '@/test/fixtures';
 
 vi.mock('@/auth/SessionProvider', () => ({ useMoi: vi.fn() }));
 vi.mock('@/lib/exportExcel', () => ({ exporterExcel: vi.fn() }));
@@ -121,4 +122,60 @@ test('un montant invalide affiche un message sans appeler la fonction', async ()
   fireEvent.click(screen.getByRole('button', { name: 'Enregistrer le dépôt' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Montant invalide');
   expect(marquerEcheance).not.toHaveBeenCalled();
+});
+
+test('la période par défaut va de J-60 à J+120 et reste modifiable et effaçable', async () => {
+  vi.mocked(listerEcheances).mockResolvedValue([]);
+  const jour = dateDuJourParis(new Date());
+  rendre();
+  expect(await screen.findByLabelText('Du')).toHaveValue(ajouterJours(jour, -60));
+  expect(screen.getByLabelText('Au')).toHaveValue(ajouterJours(jour, 120));
+  expect(listerEcheances).toHaveBeenCalledWith(
+    expect.objectContaining({ du: ajouterJours(jour, -60), au: ajouterJours(jour, 120) }), 'c1');
+  fireEvent.change(screen.getByLabelText('Du'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Au'), { target: { value: '2027-12-31' } });
+  await waitFor(() =>
+    expect(listerEcheances).toHaveBeenLastCalledWith(expect.objectContaining({ du: undefined, au: '2027-12-31' }), 'c1'),
+  );
+});
+
+test('une erreur de chargement PostgREST affiche son message', async () => {
+  vi.mocked(listerEcheances).mockRejectedValue({ message: 'permission denied for view v_echeances' });
+  rendre();
+  expect(await screen.findByRole('alert')).toHaveTextContent('permission denied for view v_echeances');
+});
+
+test('une erreur PostgREST d une action affiche son message', async () => {
+  vi.mocked(listerEcheances).mockResolvedValue([echeance({ id: 'e9' })]);
+  vi.mocked(marquerEcheance).mockRejectedValue({ message: 'Échéance introuvable.' });
+  rendre();
+  fireEvent.click(await screen.findByRole('button', { name: 'Non applicable' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Échéance introuvable.');
+});
+
+test('un manager peut rendre non applicable une échéance synchronisée à faire, puis la remettre à faire', async () => {
+  vi.mocked(useMoi).mockReturnValue({ moi: MOI_MANAGER, chargement: false });
+  vi.mocked(listerEcheances).mockResolvedValue([
+    echeance({ id: 't1', type: 'tva_mensuelle', synchronisee: true }),
+    echeance({ id: 't2', type: 'tva_mensuelle', synchronisee: true, statut: 'non_applicable', source_statut: 'manuel', raison_sociale: 'Autre Société' }),
+    echeance({ id: 't3', type: 'tva_mensuelle', synchronisee: true, statut: 'depose', source_statut: 'pennylane', raison_sociale: 'Troisième Société' }),
+  ]);
+  vi.mocked(marquerEcheance).mockResolvedValue();
+  rendre();
+  const l1 = (await screen.findByText('Société Fictive')).closest('tr') as HTMLElement;
+  expect(within(l1).queryByRole('button', { name: 'Marquer déposé' })).not.toBeInTheDocument();
+  fireEvent.click(within(l1).getByRole('button', { name: 'Non applicable' }));
+  await waitFor(() => expect(marquerEcheance).toHaveBeenCalledWith('t1', 'non_applicable'));
+  const l2 = screen.getByText('Autre Société').closest('tr') as HTMLElement;
+  fireEvent.click(within(l2).getByRole('button', { name: 'Remettre à faire' }));
+  await waitFor(() => expect(marquerEcheance).toHaveBeenCalledWith('t2', 'a_faire'));
+  const l3 = screen.getByText('Troisième Société').closest('tr') as HTMLElement;
+  expect(within(l3).queryByRole('button')).not.toBeInTheDocument();
+});
+
+test('un CSP ne peut pas rendre non applicable une échéance synchronisée', async () => {
+  vi.mocked(listerEcheances).mockResolvedValue([echeance({ id: 't1', type: 'tva_mensuelle', synchronisee: true })]);
+  rendre();
+  expect(await screen.findByText('Société Fictive')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Non applicable' })).not.toBeInTheDocument();
 });

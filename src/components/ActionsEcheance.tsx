@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { dateDuJourParis } from '@domain/dates';
 import type { LigneEcheance, Moi } from '@/data/types';
-import { peutAgirSurEcheance } from '@/auth/permissions';
+import { peutAgirSurEcheance, peutNeutraliserSynchronisee } from '@/auth/permissions';
 import { confirmerPaiement, marquerEcheance, qualifierRetard } from '@/data/echeances';
+import { messageErreur } from '@/lib/erreurs';
 import { LIBELLES_CAUSE } from '@/lib/libelles';
 import type { CauseRetard } from '@/data/types';
 
@@ -31,6 +32,8 @@ export default function ActionsEcheance({ echeance: e, moi }: { echeance: LigneE
   if (!peut) return null;
 
   const manuelle = !e.synchronisee;
+  // Échéance synchronisée : un manager ou un associé peut la rendre non applicable tant qu'elle est à faire.
+  const neutralisable = e.synchronisee && peutNeutraliserSynchronisee(moi);
   const enregistrer = () => {
     const brut = montant.trim().replace(',', '.');
     const m = brut === '' ? undefined : Number(brut);
@@ -54,6 +57,16 @@ export default function ActionsEcheance({ echeance: e, moi }: { echeance: LigneE
               Non applicable
             </button>
           </>
+        )}
+        {neutralisable && e.statut === 'a_faire' && (
+          <button type="button" className={BOUTON} onClick={() => mutation.mutate(() => marquerEcheance(e.id, 'non_applicable'))}>
+            Non applicable
+          </button>
+        )}
+        {neutralisable && e.statut === 'non_applicable' && e.source_statut === 'manuel' && (
+          <button type="button" className={BOUTON} onClick={() => mutation.mutate(() => marquerEcheance(e.id, 'a_faire'))}>
+            Remettre à faire
+          </button>
         )}
         {manuelle && (e.statut === 'depose' || e.statut === 'non_applicable') && (
           <button type="button" className={BOUTON} onClick={() => mutation.mutate(() => marquerEcheance(e.id, 'a_faire'))}>
@@ -106,7 +119,7 @@ export default function ActionsEcheance({ echeance: e, moi }: { echeance: LigneE
       )}
       {mutation.isError && (
         <p role="alert" className="text-xs text-red-600">
-          {mutation.error instanceof Error ? mutation.error.message : "L'action a échoué."}
+          {messageErreur(mutation.error, "L'action a échoué.")}
         </p>
       )}
     </div>

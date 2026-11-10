@@ -16,7 +16,8 @@ export type FiltresEcheances = {
 
 export function listerEcheances(f: FiltresEcheances, moiId: string): Promise<LigneEcheance[]> {
   return lireTout<LigneEcheance>((de, a) => {
-    let q = supabase.from('v_echeances').select('*').order('date_limite').order('raison_sociale').order('id');
+    let q = supabase.from('v_echeances').select('*').neq('dossier_statut', 'sorti')
+      .order('date_limite').order('raison_sociale').order('id');
     if (f.types?.length) q = q.in('type', f.types);
     if (f.statuts?.length) q = q.in('statut', f.statuts);
     if (f.equipe !== undefined) q = q.eq('equipe', f.equipe);
@@ -28,13 +29,14 @@ export function listerEcheances(f: FiltresEcheances, moiId: string): Promise<Lig
   });
 }
 
-/** Toutes les échéances nécessitant une attention (retard, paiement non constaté, retard non qualifié). */
+/** Toutes les échéances nécessitant une attention (retard, paiement non constaté, retard non qualifié), hors dossiers sortis. */
 export function listerEcheancesAAttention(): Promise<LigneEcheance[]> {
   return lireTout<LigneEcheance>(
     (de, a) =>
       supabase
         .from('v_echeances')
         .select('*')
+        .neq('dossier_statut', 'sorti')
         .or('en_retard.eq.true,alerte_paiement.eq.true,retard_non_qualifie.eq.true')
         .order('date_limite')
         .order('id')

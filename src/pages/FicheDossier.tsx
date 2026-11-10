@@ -190,7 +190,6 @@ export default function FicheDossier() {
             <p className="text-sm text-gris">
               Date cible : {enCours.date_cible ? formaterDate(enCours.date_cible) : 'non définie'}. Date d'approbation : {enCours.date_approbation ? formaterDate(enCours.date_approbation) : 'non définie'}.
             </p>
-            {peutModifier && <DatesExercice exercice={enCours} />}
             <h4 className="mt-4 text-sm font-bold text-marine">Historique des étapes</h4>
             {historique.length === 0 ? (
               <p className="text-sm text-gris">Aucune étape enregistrée.</p>
@@ -211,10 +210,17 @@ export default function FicheDossier() {
       </Bloc>
 
       <Bloc titre="Exercices" requetes={[fiche]} vide={!!fiche.data && exercices.length === 0}>
-        <ul className="space-y-1 text-sm">
+        <ul className="space-y-3 text-sm">
           {exercices.map((x) => (
-            <li key={x.id}>
+            <li key={x.id} aria-label={`Exercice clos le ${formaterDate(x.date_fin)}`} className="border-b border-gris/40 pb-2 last:border-b-0">
               <strong>{formaterDate(x.date_fin)}</strong> : {LIBELLES_ETAPE[x.etape_actuelle]}
+              {peutModifier ? (
+                <DatesExercice exercice={x} />
+              ) : (
+                <span className="text-gris">
+                  {' '}(date cible : {x.date_cible ? formaterDate(x.date_cible) : 'non définie'}, date d'approbation : {x.date_approbation ? formaterDate(x.date_approbation) : 'non définie'})
+                </span>
+              )}
             </li>
           ))}
         </ul>

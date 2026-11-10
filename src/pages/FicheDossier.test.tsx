@@ -55,7 +55,7 @@ beforeEach(() => {
   vi.mocked(lireDossier).mockResolvedValue({
     dossier: DOSSIER,
     exercices: [
-      exercice({ id: 'x0', date_fin: '2025-12-31', etape_actuelle: 6 }),
+      exercice({ id: 'x0', date_debut: '2025-01-01', date_fin: '2025-12-31', etape_actuelle: 6, date_cible: '2026-03-31' }),
       exercice({ id: 'x1', date_fin: '2026-12-31', etape_actuelle: 4, date_cible: '2027-03-31' }),
     ],
     historique: [
@@ -97,9 +97,29 @@ test('un manager modifie les champs outil et les dates', async () => {
   await waitFor(() =>
     expect(majDossierOutil).toHaveBeenCalledWith('d1', { equipe: 3, mission: 'revision', statut: 'actif', jourTva: 20, isN1: false, commentaire: null }),
   );
-  fireEvent.change(await screen.findByLabelText('Date cible'), { target: { value: '2027-04-15' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les dates' }));
+  const x1 = await screen.findByRole('listitem', { name: 'Exercice clos le 31/12/2026' });
+  fireEvent.change(within(x1).getByLabelText('Date cible'), { target: { value: '2027-04-15' } });
+  fireEvent.click(within(x1).getByRole('button', { name: 'Enregistrer les dates' }));
   await waitFor(() => expect(majDateCible).toHaveBeenCalledWith('x1', '2027-04-15', null));
+});
+
+test('R31 : date cible et date d approbation modifiables sur chaque exercice de la liste', async () => {
+  vi.mocked(majDateCible).mockResolvedValue();
+  rendre();
+  const x0 = await screen.findByRole('listitem', { name: 'Exercice clos le 31/12/2025' });
+  expect(within(x0).getByText(/Liasse/)).toBeInTheDocument();
+  expect(within(x0).getByLabelText('Date cible')).toHaveValue('2026-03-31');
+  fireEvent.change(within(x0).getByLabelText("Date d'approbation"), { target: { value: '2026-06-15' } });
+  fireEvent.click(within(x0).getByRole('button', { name: 'Enregistrer les dates' }));
+  await waitFor(() => expect(majDateCible).toHaveBeenCalledWith('x0', '2026-03-31', '2026-06-15'));
+  expect(screen.getAllByRole('button', { name: 'Enregistrer les dates' })).toHaveLength(2);
+});
+
+test('un Senior ne peut pas modifier les dates des exercices', async () => {
+  vi.mocked(useMoi).mockReturnValue({ moi: { ...MOI_CSP, role: 'senior' }, chargement: false });
+  rendre();
+  await screen.findByRole('listitem', { name: 'Exercice clos le 31/12/2025' });
+  expect(screen.queryByLabelText('Date cible')).not.toBeInTheDocument();
 });
 
 test('affiche l\'erreur de la fonction SQL', async () => {

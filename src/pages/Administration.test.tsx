@@ -104,10 +104,46 @@ test("l'import affiche le rapport, le nombre de rapprochés, puis rapproche un n
   expect(screen.getByRole('columnheader', { name: 'Message' })).toBeInTheDocument();
   fireEvent.click(screen.getByText("Lancer l'import"));
   expect(await screen.findByText(/4 dossiers rapprochés/)).toBeInTheDocument();
+  expect(screen.queryByText("Lancer l'import")).toBeNull();
+  expect(admin.importerClasseurRpc).toHaveBeenCalledTimes(1);
   const select = screen.getByLabelText('Proposition pour Société Fictive');
   expect(within(select).getByText('Société Fictive')).toBeInTheDocument();
   fireEvent.click(screen.getByText('Rapprocher'));
   await waitFor(() => expect(admin.rapprocherDossier).toHaveBeenCalledTimes(1));
   expect(vi.mocked(admin.rapprocherDossier).mock.calls[0][0]).toBe('D2');
   expect(vi.mocked(admin.rapprocherDossier).mock.calls[0][1]).toMatchObject({ siren: '999999999' });
+});
+
+test("Lancer l'import est désactivé pendant l'import et reste disponible après un échec", async () => {
+  vi.mocked(lireClasseur).mockResolvedValue({ lignesSuivi: [], lignesSources: [] });
+  let echouer: (e: unknown) => void = () => {};
+  vi.mocked(admin.importerClasseurRpc).mockReturnValue(new Promise((_, rejeter) => { echouer = rejeter; }));
+  rendre();
+  fireEvent.click(screen.getByRole('tab', { name: 'Import du classeur' }));
+  const fichier = new File([new Uint8Array([1])], 'suivi.xlsx');
+  Object.defineProperty(fichier, 'arrayBuffer', { value: async () => new ArrayBuffer(1) });
+  fireEvent.change(screen.getByLabelText(/Classeur de suivi/), { target: { files: [fichier] } });
+  const bouton = await screen.findByRole('button', { name: "Lancer l'import" });
+  fireEvent.click(bouton);
+  await waitFor(() => expect(bouton).toBeDisabled());
+  fireEvent.click(bouton);
+  expect(admin.importerClasseurRpc).toHaveBeenCalledTimes(1);
+  echouer({ message: 'Import refusé.' });
+  expect(await screen.findByRole('alert')).toHaveTextContent('Import refusé.');
+  expect(screen.getByRole('button', { name: "Lancer l'import" })).toBeEnabled();
+});
+
+test('un paramètre numérique vide bloque l enregistrement avec un message', async () => {
+  vi.mocked(admin.enregistrerParametres).mockResolvedValue(undefined);
+  rendre();
+  fireEvent.click(screen.getByRole('tab', { name: 'Paramètres' }));
+  const champ = await screen.findByLabelText('Jalon étape 2 (jours)');
+  fireEvent.change(champ, { target: { value: '' } });
+  expect(champ).toHaveValue(null);
+  fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les paramètres' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Jalon étape 2 (jours)');
+  expect(admin.enregistrerParametres).not.toHaveBeenCalled();
+  fireEvent.change(champ, { target: { value: '45' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Enregistrer les paramètres' }));
+  await waitFor(() => expect(admin.enregistrerParametres).toHaveBeenCalledWith({ ...PARAMS, jalon_etape2_jours: 45 }));
 });

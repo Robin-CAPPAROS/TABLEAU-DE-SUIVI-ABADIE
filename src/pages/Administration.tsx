@@ -139,7 +139,9 @@ function OngletCollaborateurs({ modifiable }: { modifiable: boolean }) {
 
 // --- Paramètres ---
 
-const CHAMPS_NOMBRES: { cle: keyof Parametres; libelle: string }[] = [
+type CleNombre = { [K in keyof Parametres]: Parametres[K] extends number ? K : never }[keyof Parametres];
+
+const CHAMPS_NOMBRES: { cle: CleNombre; libelle: string }[] = [
   { cle: 'date_cible_mois_tenue', libelle: 'Date cible, tenue (mois)' },
   { cle: 'date_cible_mois_revision', libelle: 'Date cible, révision (mois)' },
   { cle: 'date_cible_mois_micro_bnc', libelle: 'Date cible, micro-BNC (mois)' },
@@ -152,21 +154,33 @@ const CHAMPS_NOMBRES: { cle: keyof Parametres; libelle: string }[] = [
 
 function FormulaireParametres({ initial, modifiable }: { initial: Parametres; modifiable: boolean }) {
   const [p, setP] = useState<Parametres>(initial);
+  // Saisie brute des nombres : un champ vidé reste vide (et non 0) jusqu'à l'enregistrement.
+  const [nombres, setNombres] = useState<Record<string, string>>(
+    () => Object.fromEntries(CHAMPS_NOMBRES.map(({ cle }) => [cle, String(initial[cle])])),
+  );
+  const [vides, setVides] = useState<string | null>(null);
   const { erreur, executer } = useAction();
   const [ok, setOk] = useState(false);
   const basculerEquipe = (n: number) =>
     setP({ ...p, recap_equipes: p.recap_equipes.includes(n) ? p.recap_equipes.filter((x) => x !== n) : [...p.recap_equipes, n].sort() });
   const enregistrer = async () => {
     setOk(false);
-    if (await executer(() => enregistrerParametres(p), ['parametres'])) setOk(true);
+    const manquants = CHAMPS_NOMBRES.filter(({ cle }) => nombres[cle].trim() === '' || !Number.isFinite(Number(nombres[cle])));
+    if (manquants.length > 0) {
+      setVides(`Valeur numérique obligatoire : ${manquants.map((c) => c.libelle).join(', ')}.`);
+      return;
+    }
+    setVides(null);
+    const valeurs = Object.fromEntries(CHAMPS_NOMBRES.map(({ cle }) => [cle, Number(nombres[cle])])) as Record<CleNombre, number>;
+    if (await executer(() => enregistrerParametres({ ...p, ...valeurs }), ['parametres'])) setOk(true);
   };
   return (
     <form onSubmit={(e) => { e.preventDefault(); void enregistrer(); }}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {CHAMPS_NOMBRES.map(({ cle, libelle }) => (
           <Champ key={cle} libelle={libelle}>
-            <input type="number" className={CHAMP} disabled={!modifiable} value={Number(p[cle])}
-              onChange={(e) => setP({ ...p, [cle]: Number(e.target.value) })} />
+            <input type="number" className={CHAMP} disabled={!modifiable} value={nombres[cle]}
+              onChange={(e) => setNombres({ ...nombres, [cle]: e.target.value })} />
           </Champ>
         ))}
       </div>
@@ -184,7 +198,7 @@ function FormulaireParametres({ initial, modifiable }: { initial: Parametres; mo
       </div>
       {modifiable && <button type="submit" className={`${BOUTON} mt-3`}>Enregistrer les paramètres</button>}
       {ok && <p role="status" className="mt-1 text-sm text-marine">Paramètres enregistrés.</p>}
-      <Erreur e={erreur} />
+      <Erreur e={vides ?? erreur} />
     </form>
   );
 }
@@ -354,6 +368,7 @@ function OngletImport() {
   const [resultat, setResultat] = useState<ResultatImport | null>(null);
   const [restants, setRestants] = useState<NonRapproche[]>([]);
   const [lecture, setLecture] = useState(false);
+  const [importEnCours, setImportEnCours] = useState(false);
 
   const choisir = async (fichier: File | undefined) => {
     setAnalyse(null); setResultat(null); setRestants([]);
@@ -366,11 +381,13 @@ function OngletImport() {
     setLecture(false);
   };
   const lancer = async () => {
-    if (!analyse) return;
+    if (!analyse || importEnCours) return;
+    setImportEnCours(true);
     await executer(async () => {
       const r = await importerClasseurRpc(analyse.dossiers, analyse.collaborateurs);
       setResultat(r); setRestants(r.non_rapproches);
     }, ['collaborateurs']);
+    setImportEnCours(false);
   };
   const rapprocher = async (n: NonRapproche, dossierId: string) => {
     const ligne = analyse?.dossiers.find((d) => d.siren === n.siren);
@@ -405,7 +422,9 @@ function OngletImport() {
                 </table>
               </div>
             )}
-            <button type="button" className={`${BOUTON} mt-3`} onClick={() => void lancer()}>Lancer l'import</button>
+            {!resultat && (
+              <button type="button" className={`${BOUTON} mt-3`} disabled={importEnCours} onClick={() => void lancer()}>Lancer l'import</button>
+            )}
           </div>
         )}
       </Bloc>

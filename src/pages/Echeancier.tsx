@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import type { StatutEcheance, TypeEcheance } from '@domain/types';
+import { ajouterJours, dateDuJourParis } from '@domain/dates';
 import { useMoi } from '@/auth/SessionProvider';
 import { listerCollaborateurs, listerEcheances, type FiltresEcheances } from '@/data/echeances';
 import ActionsEcheance from '@/components/ActionsEcheance';
 import CalendrierMensuel from '@/components/CalendrierMensuel';
 import ExportExcel from '@/components/ExportExcel';
 import { StatutEcheanceBadge } from '@/components/StatutBadge';
+import { messageErreur } from '@/lib/erreurs';
 import { formaterDate } from '@/lib/format';
 import { LIBELLES_STATUT, LIBELLES_TYPE } from '@/lib/libelles';
 import { cn } from '@/lib/utils';
@@ -28,8 +30,9 @@ export default function Echeancier() {
   const [statut, setStatut] = useState<StatutEcheance | ''>('');
   const [collaborateurId, setCollaborateurId] = useState('');
   const [equipe, setEquipe] = useState('');
-  const [du, setDu] = useState('');
-  const [au, setAu] = useState('');
+  // Période par défaut : J-60 à J+120 (modifiable et effaçable).
+  const [du, setDu] = useState(() => ajouterJours(dateDuJourParis(new Date()), -60));
+  const [au, setAu] = useState(() => ajouterJours(dateDuJourParis(new Date()), 120));
   const [mesDossiers, setMesDossiers] = useState(true);
   const [vue, setVue] = useState<'liste' | 'calendrier'>('liste');
 
@@ -127,7 +130,7 @@ export default function Echeancier() {
         </label>
       </div>
 
-      {error && <p role="alert" className="text-sm text-red-600">{error instanceof Error ? error.message : 'Chargement impossible.'}</p>}
+      {error && <p role="alert" className="text-sm text-red-600">{messageErreur(error, 'Chargement impossible.')}</p>}
       {isLoading && <p className="text-sm text-gris">Chargement…</p>}
 
       {vue === 'calendrier' ? (

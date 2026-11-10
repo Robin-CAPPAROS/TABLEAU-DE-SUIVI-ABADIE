@@ -33,13 +33,14 @@ export type LigneEcheance = {
   csp_id: string | null;
   senior_id: string | null;
   manager_id: string | null;
-  pennylane_id: string | null;
+  pennylane_id: number | null;
   en_retard: boolean;
   sous_7_jours: boolean;
   alerte_paiement: boolean;
   depot_tardif: boolean;
   retard_non_qualifie: boolean;
   synchronisee: boolean;
+  dossier_statut: 'actif' | 'sorti';
 };
 
 /** Ligne de la vue v_exercices. */
@@ -56,13 +57,14 @@ export type LigneExercice = {
   csp_id: string | null;
   senior_id: string | null;
   manager_id: string | null;
-  pennylane_id: string | null;
+  pennylane_id: number | null;
   mission: string | null;
   jalon_etape2: ISODate | null;
   jalon_etape3: ISODate | null;
   jalon_etape4: ISODate | null;
   etape_attendue: number | null;
   en_retard: boolean;
+  dossier_statut: 'actif' | 'sorti';
 };
 
 export type Anomalie = {

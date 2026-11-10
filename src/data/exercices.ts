@@ -14,7 +14,8 @@ export type FiltresExercices = {
 
 export function listerExercices(f: FiltresExercices, moiId: string): Promise<LigneExercice[]> {
   return lireTout<LigneExercice>((de, a) => {
-    let q = supabase.from('v_exercices').select('*').order('date_cible').order('raison_sociale').order('id');
+    let q = supabase.from('v_exercices').select('*').neq('dossier_statut', 'sorti')
+      .order('date_cible').order('raison_sociale').order('id');
     if (f.equipe !== undefined) q = q.eq('equipe', f.equipe);
     if (f.managerId) q = q.eq('manager_id', f.managerId);
     if (f.seniorId) q = q.eq('senior_id', f.seniorId);

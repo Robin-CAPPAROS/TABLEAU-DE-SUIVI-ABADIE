@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { messageErreur } from '@/lib/erreurs';
 
 type Requete = { isLoading: boolean; error: unknown };
 
@@ -8,7 +9,7 @@ export default function Bloc({ titre, requetes = [], children, vide }: { titre: 
   const chargement = requetes.some((r) => r.isLoading);
   let corps: ReactNode = children;
   if (erreur) {
-    corps = <p role="alert" className="text-sm text-red-600">{erreur instanceof Error ? erreur.message : 'Chargement impossible.'}</p>;
+    corps = <p role="alert" className="text-sm text-red-600">{messageErreur(erreur, 'Chargement impossible.')}</p>;
   } else if (chargement) {
     corps = <p className="text-sm text-gris">Chargement…</p>;
   } else if (vide) {

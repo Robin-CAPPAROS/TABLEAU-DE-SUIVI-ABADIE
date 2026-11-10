@@ -24,6 +24,11 @@ export function peutAgirSurEcheance(moi: Moi, dossier: { csp_id: string | null; 
   return moi.id === dossier.csp_id || moi.id === dossier.senior_id || estManagerOuAssocie(moi);
 }
 
+/** Échappatoire de marquer_echeance : rendre non applicable une échéance synchronisée à faire (R28). */
+export function peutNeutraliserSynchronisee(moi: Moi): boolean {
+  return estManagerOuAssocie(moi);
+}
+
 export function peutModifierDossier(moi: Moi): boolean {
   return estManagerOuAssocie(moi) || moi.administrateur;
 }

@@ -9,6 +9,7 @@ import { listerExercices, type FiltresExercices } from '@/data/exercices';
 import { lireIndicateurs, type BlocIndicateurs } from '@/data/pilotage';
 import Bloc from '@/components/Bloc';
 import ExportExcel from '@/components/ExportExcel';
+import { messageErreur } from '@/lib/erreurs';
 import { bornesSaison, formaterDate, formaterNombre, formaterPourcentage, saisonFiscale } from '@/lib/format';
 import { LIBELLES_CAUSE, LIBELLES_TYPE } from '@/lib/libelles';
 import type { TypeEcheance } from '@domain/types';
@@ -37,7 +38,7 @@ function Carte({ contexte, titre, valeur, detail, precedente, titreListe = 'Doss
         <div className="mt-2">
           <h4 className="text-xs font-bold text-marine">{titreListe}</h4>
           {liste.error ? (
-            <p role="alert" className="text-xs text-red-600">{liste.error instanceof Error ? liste.error.message : 'Chargement impossible.'}</p>
+            <p role="alert" className="text-xs text-red-600">{messageErreur(liste.error, 'Chargement impossible.')}</p>
           ) : liste.isLoading ? (
             <p className="text-xs text-gris">Chargement…</p>
           ) : (liste.data ?? []).length === 0 ? (
