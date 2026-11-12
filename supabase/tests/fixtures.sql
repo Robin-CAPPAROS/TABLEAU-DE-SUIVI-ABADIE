@@ -1,12 +1,12 @@
 -- Donnees fictives communes a tous les tests SQL (inserees dans la transaction du test).
-insert into collaborateurs (id, prenom, nom, nom_pennylane, trigramme, email, role, administrateur, actif) values
-  ('00000000-0000-0000-0000-0000000000c1', 'Camille', 'Dupuis',   'Camille DUPUIS',   'CDU', 'csp1@cabinet.test',    'csp',     false, true),
-  ('00000000-0000-0000-0000-0000000000c2', 'Clara',   'Moreau',   'Clara MOREAU',     'CMO', 'csp2@cabinet.test',    'csp',     false, true),
-  ('00000000-0000-0000-0000-000000000051', 'Sophie',  'Lambert',  'Sophie LAMBERT',   'SLA', 'sen1@cabinet.test',    'senior',  false, true),
-  ('00000000-0000-0000-0000-000000000041', 'Marc',    'Girard',   'Marc GIRARD',      'MGI', 'man1@cabinet.test',    'manager', false, true),
-  ('00000000-0000-0000-0000-0000000000a1', 'Hélène',  'Rousseau', 'Hélène ROUSSEAU',  'HRO', 'ass1@cabinet.test',    'associe', true,  true),
-  ('00000000-0000-0000-0000-0000000000a2', 'Paul',    'Fontaine', 'Paul FONTAINE',    'PFO', 'rca@cabinet.test',     'manager', true,  true),
-  ('00000000-0000-0000-0000-000000000099', 'Julien',  'Perrin',   'Julien PERRIN',    'JPE', 'inactif@cabinet.test', 'csp',     false, false);
+insert into collaborateurs (id, prenom, nom, nom_pennylane, trigramme, email, role, administrateur, actif, auth_user_id) values
+  ('00000000-0000-0000-0000-0000000000c1', 'Camille', 'Dupuis',   'Camille DUPUIS',   'CDU', 'csp1@cabinet.test',    'csp',     false, true, '10000000-0000-0000-0000-0000000000c1'),
+  ('00000000-0000-0000-0000-0000000000c2', 'Clara',   'Moreau',   'Clara MOREAU',     'CMO', 'csp2@cabinet.test',    'csp',     false, true, '10000000-0000-0000-0000-0000000000c2'),
+  ('00000000-0000-0000-0000-000000000051', 'Sophie',  'Lambert',  'Sophie LAMBERT',   'SLA', 'sen1@cabinet.test',    'senior',  false, true, '10000000-0000-0000-0000-000000000051'),
+  ('00000000-0000-0000-0000-000000000041', 'Marc',    'Girard',   'Marc GIRARD',      'MGI', 'man1@cabinet.test',    'manager', false, true, '10000000-0000-0000-0000-000000000041'),
+  ('00000000-0000-0000-0000-0000000000a1', 'Hélène',  'Rousseau', 'Hélène ROUSSEAU',  'HRO', 'ass1@cabinet.test',    'associe', true,  true, '10000000-0000-0000-0000-0000000000a1'),
+  ('00000000-0000-0000-0000-0000000000a2', 'Paul',    'Fontaine', 'Paul FONTAINE',    'PFO', 'rca@cabinet.test',     'manager', true,  true, '10000000-0000-0000-0000-0000000000a2'),
+  ('00000000-0000-0000-0000-000000000099', 'Julien',  'Perrin',   'Julien PERRIN',    'JPE', 'inactif@cabinet.test', 'csp',     false, false, '10000000-0000-0000-0000-000000000099');
 
 insert into dossiers (id, pennylane_id, raison_sociale, forme_juridique, regime_tva, categorie_fiscale,
                       csp_id, senior_id, manager_id, equipe, mission, jour_echeance_tva) values

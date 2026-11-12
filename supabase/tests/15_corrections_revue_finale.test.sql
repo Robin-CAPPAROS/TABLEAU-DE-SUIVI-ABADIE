@@ -13,31 +13,6 @@ grant execute on function code_erreur(text) to authenticated, anon;
 set local app.aujourdhui = '2026-11-10';
 
 -- ---------------------------------------------------------------------------
--- R27 : moi() exige une connexion Microsoft (fournisseur azure)
--- ---------------------------------------------------------------------------
-set local role authenticated;
-set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
-do $$
-begin
-  assert (moi()).id = '00000000-0000-0000-0000-0000000000c1', 'azure : collaborateur reconnu';
-  assert (select count(*) from dossiers) = 2, 'azure : dossiers visibles';
-end $$;
-
-set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"email"}}';
-do $$
-begin
-  assert (moi()).id is null, 'fournisseur email : moi() nul';
-  assert (select count(*) from dossiers) = 0, 'fournisseur email : aucun dossier visible';
-end $$;
-
-set local request.jwt.claims = '{"email":"csp1@cabinet.test"}';
-do $$
-begin
-  assert (moi()).id is null, 'sans fournisseur : moi() nul';
-end $$;
-reset role;
-
--- ---------------------------------------------------------------------------
 -- R28 : echeances generees obsoletes (changement de regime)
 -- ---------------------------------------------------------------------------
 update dossiers set regime_tva = 'trimestriel' where id = '00000000-0000-0000-0000-0000000000d1';
@@ -71,7 +46,7 @@ insert into echeances (id, dossier_id, type, periode_debut, periode_fin, date_li
 
 -- finaliser_generation est reservee a service_role
 set local role authenticated;
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 begin
   assert code_erreur($q$select finaliser_generation(now(), '2026-09-11')$q$) = '42501', 'man1 refuse finaliser_generation';
@@ -127,13 +102,13 @@ insert into echeances (id, dossier_id, type, periode_debut, periode_fin, date_li
    '2026-08-01', '2026-08-31', '2026-09-19', 'non_applicable', null);
 
 set local role authenticated;
-set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c1"}';
 do $$
 begin
   assert code_erreur($q$select marquer_echeance('00000000-0000-0000-0000-00000000b001', 'non_applicable')$q$) = 'P0001', 'csp1 refuse sur synchronisee';
 end $$;
 
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 begin
   assert code_erreur($q$select marquer_echeance('00000000-0000-0000-0000-00000000b001', 'depose')$q$) = 'P0001', 'depose refuse sur synchronisee';
@@ -151,7 +126,7 @@ begin
 end $$;
 
 set local role authenticated;
-set local request.jwt.claims = '{"email":"ass1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a1"}';
 do $$
 begin
   assert code_erreur($q$select marquer_echeance('00000000-0000-0000-0000-00000000b001', 'a_faire')$q$) = 'ok', 'ass1 remet a faire';

@@ -14,7 +14,7 @@ set local app.aujourdhui = '2026-11-10';
 
 -- csp1 ne peut pas appeler sync_appliquer
 set local role authenticated;
-set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c1"}';
 do $$
 begin
   assert code_erreur($q$select sync_appliquer('{}'::jsonb, 'mcp')$q$) = '42501', 'csp1 refuse';

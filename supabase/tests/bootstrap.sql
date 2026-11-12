@@ -6,6 +6,9 @@ create role authenticated nologin;
 create role service_role nologin;
 
 create schema auth;
+create function auth.uid() returns uuid
+language sql stable
+as $$ select nullif(coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb ->> 'sub', '')::uuid $$;
 create function auth.jwt() returns jsonb
 language sql stable
 as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;

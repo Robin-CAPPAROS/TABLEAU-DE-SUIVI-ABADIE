@@ -12,7 +12,7 @@ insert into echeances (dossier_id, type, periode_debut, periode_fin, date_limite
 
 -- droits : authenticated refuse
 set local role authenticated;
-set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c1"}';
 do $$
 declare ok boolean := false;
 begin

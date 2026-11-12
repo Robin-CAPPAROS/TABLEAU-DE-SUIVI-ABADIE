@@ -56,7 +56,7 @@ end $$;
 
 -- csp1 : indicateurs refuses, plan de charge permis
 set local role authenticated;
-set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c1"}';
 do $$
 begin
   assert code_erreur($q$select indicateurs(2026)$q$) = '42501', 'csp refuse';
@@ -64,7 +64,7 @@ begin
 end $$;
 
 -- man1
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 declare r jsonb; g jsonb; l record;
 begin

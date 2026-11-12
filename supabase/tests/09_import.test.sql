@@ -21,7 +21,7 @@ end $$;
 
 -- non administrateur
 set local role authenticated;
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 begin
   assert code_erreur($q$select import_classeur('{}'::jsonb)$q$) = '42501', 'man1 refuse import';
@@ -29,7 +29,7 @@ begin
 end $$;
 
 -- administrateur
-set local request.jwt.claims = '{"email":"rca@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a2"}';
 do $$
 declare
   r jsonb;

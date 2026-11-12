@@ -16,7 +16,7 @@ insert into anomalies (id, type, cle, message) values
 
 -- manager non administrateur : aucune ligne modifiee
 set local role authenticated;
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 declare v_code text;
 begin
@@ -31,7 +31,7 @@ end $$;
 
 -- administrateur
 set local role authenticated;
-set local request.jwt.claims = '{"email":"rca@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a2"}';
 do $$
 begin
   assert code_erreur($q$update anomalies set resolue_le = now() where id = '00000000-0000-0000-0000-0000000000a1'$q$) = 'ok', 'rca resout';

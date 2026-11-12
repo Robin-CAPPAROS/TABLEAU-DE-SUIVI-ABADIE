@@ -1,34 +1,34 @@
 begin;
 
 -- Donnees propres a ce test (inserees en superutilisateur, hors RLS).
-insert into collaborateurs (prenom, nom, nom_pennylane, trigramme, email, role)
-values ('Sans', 'Role', 'Sans ROLE', 'SRO', 'sansrole@cabinet.test', null);
+insert into collaborateurs (prenom, nom, nom_pennylane, trigramme, email, role, auth_user_id)
+values ('Sans', 'Role', 'Sans ROLE', 'SRO', 'sansrole@cabinet.test', null, '10000000-0000-0000-0000-000000000005');
 insert into journal_synchro (source, nature) values ('outil', 'fiches');
 
--- connexion_insensible_casse
+-- connexion par identifiant de compte
 set local role authenticated;
-set local request.jwt.claims = '{"email":"CSP1@Cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c1"}';
 do $$
 begin
-  assert (select count(*) from dossiers) = 2, 'connexion_insensible_casse : csp1 doit voir 2 dossiers';
+  assert (select count(*) from dossiers) = 2, 'compte lie : csp1 doit voir 2 dossiers';
 end $$;
 
 -- adresse inconnue
-set local request.jwt.claims = '{"email":"inconnu@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000ff"}';
 do $$
 begin
   assert (select count(*) from dossiers) = 0, 'adresse inconnue : 0 dossier';
 end $$;
 
 -- collaborateur inactif
-set local request.jwt.claims = '{"email":"inactif@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000099"}';
 do $$
 begin
   assert (select count(*) from dossiers) = 0, 'collaborateur inactif : 0 dossier';
 end $$;
 
 -- role nul
-set local request.jwt.claims = '{"email":"sansrole@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000005"}';
 do $$
 begin
   assert (select count(*) from dossiers) = 0, 'role nul : 0 dossier';
@@ -50,7 +50,7 @@ reset role;
 
 -- man1 : aucune modification de dossier (0 ligne ou refus), l'equipe reste 1
 set local role authenticated;
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 declare n int;
 begin
@@ -70,7 +70,7 @@ end $$;
 
 -- man1 ne peut pas inserer de collaborateur (42501)
 set local role authenticated;
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 declare ok boolean := false;
 begin
@@ -83,7 +83,7 @@ begin
 end $$;
 
 -- ass1 (administrateur) peut inserer
-set local request.jwt.claims = '{"email":"ass1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a1"}';
 insert into collaborateurs (prenom, nom, nom_pennylane, trigramme, email, role)
 values ('Nouveau', 'Un', 'Nouveau UN', 'NU1', 'nu1@cabinet.test', 'csp');
 
@@ -96,7 +96,7 @@ begin
 end $$;
 
 -- rca ne peut plus inserer (42501)
-set local request.jwt.claims = '{"email":"rca@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a2"}';
 do $$
 declare ok boolean := false;
 begin
@@ -109,7 +109,7 @@ begin
 end $$;
 
 -- ass1, seul administrateur actif : ne peut pas se retirer le droit (P0001)
-set local request.jwt.claims = '{"email":"ass1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a1"}';
 do $$
 declare ok boolean := false; msg text;
 begin
@@ -148,12 +148,12 @@ update collaborateurs set actif = false where email = 'rca@cabinet.test';
 
 -- journal_synchro : csp1 ne voit rien, man1 voit 1 ligne
 set local role authenticated;
-set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c1"}';
 do $$
 begin
   assert (select count(*) from journal_synchro) = 0, 'csp1 ne voit pas le journal';
 end $$;
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 begin
   assert (select count(*) from journal_synchro) = 1, 'man1 voit le journal';

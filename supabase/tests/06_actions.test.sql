@@ -34,7 +34,7 @@ end $$;
 set local role authenticated;
 
 -- csp1 : is_solde de D1
-set local request.jwt.claims = '{"email":"csp1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c1"}';
 do $$ begin perform marquer_echeance('00000000-0000-0000-0000-00000000f001', 'depose'); end $$;
 do $$
 declare r echeances;
@@ -118,7 +118,7 @@ begin
 end $$;
 
 -- csp2 ne peut pas agir sur D1
-set local request.jwt.claims = '{"email":"csp2@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c2"}';
 do $$
 begin
   assert code_erreur($q$select qualifier_retard('00000000-0000-0000-0000-00000000f008', 'cabinet')$q$) = '42501', 'csp2 refuse qualifier';
@@ -126,20 +126,20 @@ begin
 end $$;
 
 -- sen1 (senior du dossier) et man1 peuvent agir
-set local request.jwt.claims = '{"email":"sen1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000051"}';
 do $$ begin perform marquer_echeance('00000000-0000-0000-0000-00000000f002', 'depose'); end $$;
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$ begin perform marquer_echeance('00000000-0000-0000-0000-00000000f002', 'a_faire'); end $$;
 
 -- maj_dossier_outil
-set local request.jwt.claims = '{"email":"sen1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000051"}';
 do $$
 begin
   assert code_erreur($q$select maj_dossier_outil('00000000-0000-0000-0000-0000000000d1', 2, 'revision', 'actif', 20, false, 'x')$q$) = '42501', 'sen1 refuse maj_dossier_outil';
   assert code_erreur($q$select maj_exercice('00000000-0000-0000-0000-0000000000e1', date '2027-06-30', null)$q$) = '42501', 'sen1 refuse maj_exercice';
 end $$;
 
-set local request.jwt.claims = '{"email":"man1@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000041"}';
 do $$
 begin
   assert code_erreur($q$select maj_dossier_outil('00000000-0000-0000-0000-0000000000d1', 4, 'revision', 'actif', 20, false, 'x')$q$) = 'P0001', 'equipe 4';
@@ -163,7 +163,7 @@ begin
 end $$;
 
 -- rca modifie la date cible
-set local request.jwt.claims = '{"email":"rca@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a2"}';
 do $$ begin perform maj_exercice('00000000-0000-0000-0000-0000000000e1', date '2027-06-30', date '2027-05-20'); end $$;
 do $$
 declare x exercices;
@@ -178,7 +178,7 @@ begin
 end $$;
 
 -- inactif
-set local request.jwt.claims = '{"email":"inactif@cabinet.test","app_metadata":{"provider":"azure"}}';
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-000000000099"}';
 do $$
 begin
   assert code_erreur($q$select marquer_echeance('00000000-0000-0000-0000-00000000f001', 'depose')$q$) = '42501', 'inactif refuse';
