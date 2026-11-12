@@ -32,21 +32,28 @@ $$;
 revoke execute on function marquer_mot_de_passe_change() from public, anon;
 grant execute on function marquer_mot_de_passe_change() to authenticated;
 
--- Seul service_role (ou une session SQL directe sans JWT) modifie le lien de compte
--- et l'obligation de changer le mot de passe, sauf la remise a faux par son titulaire.
+-- Seul service_role (ou une session SQL directe, hors roles anon/authenticated, sans JWT)
+-- cree ou modifie le lien de compte et l'obligation de changer le mot de passe, sauf la
+-- remise a faux par son titulaire.
 create function garde_comptes_collaborateurs() returns trigger
 language plpgsql set search_path = public
 as $$
 begin
-  if new.auth_user_id is not distinct from old.auth_user_id
+  if tg_op = 'INSERT' then
+    if new.auth_user_id is null and not new.doit_changer_mdp then
+      return new;
+    end if;
+  elsif new.auth_user_id is not distinct from old.auth_user_id
      and new.doit_changer_mdp is not distinct from old.doit_changer_mdp then
     return new;
   end if;
-  if coalesce(current_setting('request.jwt.claims', true), '') = ''
+  if (coalesce(current_setting('request.jwt.claims', true), '') = ''
+      and current_user not in ('anon', 'authenticated'))
      or coalesce(auth.jwt() ->> 'role', '') = 'service_role' then
     return new;
   end if;
-  if new.auth_user_id is not distinct from old.auth_user_id
+  if tg_op = 'UPDATE'
+     and new.auth_user_id is not distinct from old.auth_user_id
      and old.doit_changer_mdp and not new.doit_changer_mdp
      and old.auth_user_id is not null and old.auth_user_id = auth.uid() then
     return new;
@@ -56,5 +63,5 @@ end
 $$;
 
 create trigger garde_comptes_collaborateurs
-before update on collaborateurs
+before insert or update on collaborateurs
 for each row execute function garde_comptes_collaborateurs();

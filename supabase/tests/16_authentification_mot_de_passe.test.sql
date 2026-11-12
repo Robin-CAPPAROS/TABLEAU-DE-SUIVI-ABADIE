@@ -104,6 +104,47 @@ begin
     = '10000000-0000-0000-0000-0000000000c2', 'auth_user_id inchange';
 end $$;
 
+-- (e2) insertion par un administrateur : pas de lien de compte ni d'obligation de changement
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+do $$
+begin
+  assert code_erreur($q$insert into collaborateurs (prenom, nom, nom_pennylane, trigramme, email, role, auth_user_id)
+    values ('Ins', 'Un', 'Ins UN', 'IN1', 'in1@cabinet.test', 'csp', '30000000-0000-0000-0000-000000000003')$q$) = '42501',
+    'insertion avec auth_user_id : 42501';
+  assert code_erreur($q$insert into collaborateurs (prenom, nom, nom_pennylane, trigramme, email, role, doit_changer_mdp)
+    values ('Ins', 'Deux', 'Ins DEUX', 'IN2', 'in2@cabinet.test', 'csp', true)$q$) = '42501',
+    'insertion avec doit_changer_mdp : 42501';
+  assert code_erreur($q$insert into collaborateurs (prenom, nom, nom_pennylane, trigramme, email, role)
+    values ('Ins', 'Trois', 'Ins TROIS', 'IN3', 'in3@cabinet.test', 'csp')$q$) = 'ok',
+    'insertion simple par un administrateur';
+  -- un administrateur ne change pas son propre lien de compte
+  assert code_erreur($q$update collaborateurs set auth_user_id = '30000000-0000-0000-0000-000000000004'
+    where id = '00000000-0000-0000-0000-0000000000a1'$q$) = '42501', 'admin : son auth_user_id : 42501';
+end $$;
+-- un titulaire non administrateur ne peut pas lever son propre indicateur (refus ou ligne non modifiable)
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000c1","role":"authenticated"}';
+do $$
+begin
+  assert code_erreur($q$update collaborateurs set doit_changer_mdp = true
+    where id = '00000000-0000-0000-0000-0000000000c1'$q$) in ('42501', 'ok'), 'titulaire : faux vers vrai';
+  assert not (moi()).doit_changer_mdp, 'titulaire : indicateur toujours faux';
+end $$;
+-- claims vides dans une session authenticated : la garde reste active
+set local request.jwt.claims = '{"sub":"10000000-0000-0000-0000-0000000000a1","role":"authenticated"}';
+set local request.jwt.claims = '';
+do $$
+begin
+  assert code_erreur($q$update collaborateurs set auth_user_id = '30000000-0000-0000-0000-000000000005'
+    where id = '00000000-0000-0000-0000-0000000000c2'$q$) in ('42501', 'ok'), 'claims vides en authenticated';
+end $$;
+reset role;
+do $$
+begin
+  assert (select auth_user_id from collaborateurs where id = '00000000-0000-0000-0000-0000000000c2')
+    = '10000000-0000-0000-0000-0000000000c2', 'claims vides en authenticated : auth_user_id inchange';
+end $$;
+
 -- (f) service_role : peut modifier auth_user_id
 grant all on all tables in schema public to service_role;
 alter role service_role bypassrls;
